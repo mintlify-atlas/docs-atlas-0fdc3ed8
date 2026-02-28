@@ -1,0 +1,99 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "paqet",
+  "projectDescription": "A bidirectional packet-level proxy using raw sockets, KCP transport, and encryption to bypass firewalls.",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#60a5fa",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Get Started",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/architecture",
+              "concepts/security-model"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/client",
+              "configuration/server",
+              "configuration/transport",
+              "configuration/encryption"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/run",
+              "commands/secret",
+              "commands/ping",
+              "commands/dump",
+              "commands/iface",
+              "commands/version"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "guides/client-setup",
+              "guides/server-setup",
+              "guides/network-configuration",
+              "guides/firewall-configuration"
+            ]
+          },
+          {
+            "group": "Usage",
+            "pages": [
+              "guides/socks5-proxy",
+              "guides/port-forwarding",
+              "guides/testing",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Raw packet-level proxy using pcap and raw sockets",
+    "KCP transport with encryption (AES, Salsa20, etc.)",
+    "SOCKS5 proxy mode for dynamic traffic forwarding",
+    "Port forwarding for TCP/UDP traffic",
+    "Firewall bypass using crafted TCP packets",
+    "Cross-platform support (Linux, macOS, Windows)"
+  ],
+  "publicApiSurface": [
+    "paqet run - Start client or server proxy",
+    "paqet secret - Generate encryption key",
+    "paqet ping - Test connectivity to server",
+    "paqet dump - Capture and decode packets",
+    "paqet iface - List network interfaces",
+    "paqet version - Display version information"
+  ]
+}
