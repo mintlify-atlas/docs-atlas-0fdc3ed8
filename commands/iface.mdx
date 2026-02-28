@@ -1,0 +1,109 @@
+---
+title: "iface"
+description: "List available network interfaces and their addresses"
+---
+
+The `iface` command lists all available network interfaces on your system along with their hardware addresses and IP addresses.
+
+## Syntax
+
+```bash
+paqet iface
+```
+
+## Description
+
+This command displays all network interfaces available on your system, including their names, MAC addresses, and assigned IP addresses (both IPv4 and IPv6). This information is essential when configuring paqet, as you need to specify the correct interface name in your configuration file.
+
+<Note>
+  The `iface` command does not require root privileges and can be run as a regular user.
+</Note>
+
+## Usage Example
+
+```bash
+paqet iface
+```
+
+## Example Output
+
+```
+Available network interfaces:
+  lo: 
+    127.0.0.1/8
+    ::1/128
+  eth0: 00:1a:2b:3c:4d:5e
+    192.168.1.100/24
+    fe80::21a:2bff:fe3c:4d5e/64
+  wlan0: a4:5e:60:c2:8f:1a
+    192.168.0.50/24
+    fe80::a65e:60ff:fec2:8f1a/64
+  docker0: 02:42:7f:a9:3e:1c
+    172.17.0.1/16
+```
+
+## Understanding the Output
+
+For each interface, you'll see:
+
+1. **Interface Name**: The system name for the interface (e.g., `eth0`, `wlan0`)
+2. **Hardware Address**: The MAC address of the interface (6 pairs of hex digits)
+3. **IP Addresses**: All IPv4 and IPv6 addresses assigned to the interface with their subnet masks
+
+## Common Interface Names
+
+- **`lo`**: Loopback interface (127.0.0.1) - not suitable for paqet
+- **`eth0`, `eth1`**: Ethernet interfaces
+- **`wlan0`, `wlan1`**: Wireless interfaces
+- **`ens33`, `enp0s3`**: Modern systemd-style Ethernet naming
+- **`docker0`, `br-*`**: Virtual bridge interfaces created by Docker
+- **`tun0`, `tap0`**: VPN tunnel interfaces
+
+## Why You Need This
+
+When configuring paqet, you must specify which network interface to use for sending/receiving raw packets. The interface name must match exactly what your system uses.
+
+### In Your Config File
+
+Use the interface name from `paqet iface` output in your configuration:
+
+```yaml
+network:
+  interface:
+    name: "eth0"  # Use the exact name from paqet iface
+  ipv4:
+    addr: "192.168.1.100"  # Use an address assigned to this interface
+  ipv6:
+    addr: "fe80::21a:2bff:fe3c:4d5e"  # Optional IPv6 address
+```
+
+<Warning>
+  Make sure to use an interface that has a valid IP address assigned and is connected to the network. Using an interface without an IP or that's not connected will cause paqet to fail.
+</Warning>
+
+<Info>
+  If you're unsure which interface to use, look for the one with a non-127.0.0.1 IP address that matches your network. Typically this is `eth0` for wired connections or `wlan0` for wireless.
+</Info>
+
+## When to Use Iface
+
+Run `paqet iface` when:
+
+- **Setting up paqet**: Before creating your configuration file
+- **Troubleshooting**: If paqet reports "interface not found" errors
+- **Multi-homed systems**: When your server has multiple network interfaces
+- **After network changes**: When network configuration has been modified
+- **In containers**: To identify the correct interface in Docker or other containerized environments
+
+## Choosing the Right Interface
+
+Select an interface that:
+
+1. Has a valid IP address (not just 127.0.0.1)
+2. Is connected to the network you want to use
+3. Can route to the client/server you're connecting to
+4. Isn't a virtual or temporary interface (unless intentional)
+
+<Note>
+  In cloud environments, the interface name might be different from typical systems. AWS EC2 instances often use `eth0` or `ens5`, while some providers use other naming schemes.
+</Note>

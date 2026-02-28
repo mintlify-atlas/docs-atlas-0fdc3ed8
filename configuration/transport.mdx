@@ -1,0 +1,252 @@
+---
+title: 'Transport Configuration'
+description: 'Configure KCP transport protocol for optimal performance'
+---
+
+The transport section configures the underlying protocol used for communication between client and server. Currently, paqet only supports the KCP protocol.
+
+## Transport Protocol
+
+<ParamField path="transport.protocol" type="string" default="kcp">
+  Transport protocol to use. Currently only `"kcp"` is supported.
+</ParamField>
+
+## Connection Settings
+
+<ParamField path="transport.conn" type="integer" default="1">
+  Number of parallel connections (1-256). Multiple connections can improve throughput on high-latency networks.
+  
+  **Client restriction**: If the client port is explicitly set (non-zero) in `network.ipv4.addr`, only 1 connection is allowed.
+</ParamField>
+
+<ParamField path="transport.tcpbuf" type="integer" default="8192">
+  TCP buffer size in bytes
+</ParamField>
+
+<ParamField path="transport.udpbuf" type="integer" default="4096">
+  UDP buffer size in bytes
+</ParamField>
+
+## KCP Protocol Configuration
+
+KCP is a fast and reliable ARQ protocol that can achieve higher throughput and lower latency than TCP, especially on lossy or high-latency networks.
+
+### KCP Modes
+
+<ParamField path="transport.kcp.mode" type="string" default="fast">
+  Predefined KCP mode preset. Choose based on your network conditions and performance requirements:
+  
+  - `normal`: Conservative TCP-like behavior with congestion control
+  - `fast`: Balanced mode for general use (recommended)
+  - `fast2`: More aggressive mode for better performance
+  - `fast3`: Most aggressive mode for maximum speed
+  - `manual`: Use custom parameters defined below
+</ParamField>
+
+<Accordion title="KCP Mode Details">
+  Each mode configures the underlying KCP parameters differently:
+  
+  | Mode | nodelay | interval | resend | nocongestion | Use Case |
+  |------|---------|----------|--------|--------------|----------|
+  | normal | 0 | 40 | 2 | 0 | Stable networks, TCP-like behavior |
+  | fast | 1 | 30 | 2 | 1 | General use, balanced performance |
+  | fast2 | 1 | 20 | 2 | 1 | Low-latency networks |
+  | fast3 | 1 | 10 | 2 | 1 | Maximum performance, high bandwidth |
+  | manual | custom | custom | custom | custom | Full control over all parameters |
+</Accordion>
+
+### Manual Mode Parameters
+
+When `mode` is set to `"manual"`, you can configure individual KCP parameters:
+
+<ParamField path="transport.kcp.nodelay" type="integer">
+  Enable or disable nodelay mode:
+  - `0`: Disable (TCP-like conservative behavior)
+  - `1`: Enable (lower latency and aggressive retransmission)
+</ParamField>
+
+<ParamField path="transport.kcp.interval" type="integer">
+  Internal update timer interval in milliseconds (10-5000ms).
+  
+  Lower values increase responsiveness but raise CPU usage. Typical values:
+  - 10ms: Maximum responsiveness, higher CPU
+  - 20ms: Good balance
+  - 40ms: Conservative, lower CPU
+</ParamField>
+
+<ParamField path="transport.kcp.resend" type="integer">
+  Fast retransmit trigger (0-2):
+  - `0`: Disabled (wait for timeout only)
+  - `1`: Most aggressive (retransmit after 1 ACK skip)
+  - `2`: Aggressive (retransmit after 2 ACK skips)
+</ParamField>
+
+<ParamField path="transport.kcp.nocongestion" type="integer">
+  Congestion control setting:
+  - `0`: Enable TCP-like fair congestion control (slow start, congestion avoidance)
+  - `1`: Disable congestion control for maximum speed
+</ParamField>
+
+<ParamField path="transport.kcp.wdelay" type="boolean">
+  Write batching behavior:
+  - `false`: Flush immediately (low latency, recommended for real-time applications)
+  - `true`: Batch writes until next update interval (higher throughput)
+</ParamField>
+
+<ParamField path="transport.kcp.acknodelay" type="boolean">
+  ACK sending behavior:
+  - `true`: Send ACKs immediately when packets are received (lower latency)
+  - `false`: Batch ACKs (more bandwidth efficient)
+</ParamField>
+
+### MTU and Window Settings
+
+<ParamField path="transport.kcp.mtu" type="integer" default="1350">
+  Maximum transmission unit in bytes (50-1500).
+  
+  <Note>
+  Default is 1350 to avoid fragmentation. Only increase if you're certain your network path supports larger MTUs.
+  </Note>
+</ParamField>
+
+<ParamField path="transport.kcp.rcvwnd" type="integer" default="512 (client) / 1024 (server)">
+  Receive window size (1-32768).
+  
+  Controls how many packets can be in flight. Larger windows improve throughput on high-latency networks.
+</ParamField>
+
+<ParamField path="transport.kcp.sndwnd" type="integer" default="512 (client) / 1024 (server)">
+  Send window size (1-32768).
+  
+  Controls how many packets can be sent before waiting for ACKs. Larger windows improve throughput.
+</ParamField>
+
+### Buffer Settings
+
+<ParamField path="transport.kcp.smuxbuf" type="integer" default="4194304">
+  SMUX multiplexing buffer size in bytes (minimum 1024). Default is 4MB.
+</ParamField>
+
+<ParamField path="transport.kcp.streambuf" type="integer" default="2097152">
+  Stream buffer size in bytes (minimum 1024). Default is 2MB.
+</ParamField>
+
+### Keepalive Settings
+
+<ParamField path="transport.kcp.smuxkalive" type="integer" default="2">
+  SMUX keepalive interval in seconds. How often to send keepalive probes.
+</ParamField>
+
+<ParamField path="transport.kcp.smuxktimeout" type="integer" default="8">
+  SMUX keepalive timeout in seconds. Connection is considered dead after this timeout.
+</ParamField>
+
+## Encryption
+
+Encryption is configured within the KCP section. See [Encryption Configuration](/configuration/encryption) for details.
+
+<ParamField path="transport.kcp.block" type="string" default="aes">
+  Encryption algorithm to use. See [Encryption Configuration](/configuration/encryption) for available options.
+</ParamField>
+
+<ParamField path="transport.kcp.key" type="string" required>
+  Encryption key. Must match between client and server. Generate using `paqet secret`.
+</ParamField>
+
+## Forward Error Correction (FEC)
+
+<Note>
+FEC is currently disabled in paqet. The parameters below are reserved for future use.
+</Note>
+
+<ParamField path="transport.kcp.dshard" type="integer">
+  Data shards for FEC (currently disabled)
+</ParamField>
+
+<ParamField path="transport.kcp.pshard" type="integer">
+  Parity shards for FEC (currently disabled)
+</ParamField>
+
+## Configuration Examples
+
+### Fast Mode (Recommended)
+
+```yaml
+transport:
+  protocol: "kcp"
+  conn: 1
+  kcp:
+    mode: "fast"
+    key: "your-secret-key-here"
+```
+
+### Manual Mode for Low-Latency
+
+```yaml
+transport:
+  protocol: "kcp"
+  conn: 1
+  kcp:
+    mode: "manual"
+    nodelay: 1
+    interval: 10
+    resend: 2
+    nocongestion: 1
+    wdelay: false
+    acknodelay: true
+    mtu: 1350
+    rcvwnd: 512
+    sndwnd: 512
+    key: "your-secret-key-here"
+```
+
+### Multiple Connections for High-Latency Networks
+
+```yaml
+transport:
+  protocol: "kcp"
+  conn: 4  # Use 4 parallel connections
+  kcp:
+    mode: "fast2"
+    rcvwnd: 1024
+    sndwnd: 1024
+    key: "your-secret-key-here"
+```
+
+## Performance Tuning
+
+<AccordionGroup>
+  <Accordion title="High-Latency Networks (>100ms)">
+    - Use `mode: "fast2"` or `mode: "fast3"`
+    - Increase window sizes: `rcvwnd: 1024`, `sndwnd: 1024`
+    - Consider multiple connections: `conn: 2` or `conn: 4`
+    - Increase buffers: `smuxbuf: 8388608`, `streambuf: 4194304`
+  </Accordion>
+  
+  <Accordion title="Low-Latency Networks (<50ms)">
+    - Use `mode: "fast"` (default)
+    - Keep default window sizes
+    - Single connection is usually sufficient: `conn: 1`
+    - Lower interval for responsiveness: `interval: 10` (manual mode)
+  </Accordion>
+  
+  <Accordion title="Lossy Networks (>1% packet loss)">
+    - Use `mode: "fast2"` or `mode: "fast3"`
+    - Increase retransmission: `resend: 2` (manual mode)
+    - Enable aggressive ACKs: `acknodelay: true` (manual mode)
+    - Consider FEC when it becomes available
+  </Accordion>
+  
+  <Accordion title="CPU Constrained Environments">
+    - Use `mode: "normal"` or `mode: "fast"`
+    - Increase interval: `interval: 40` (manual mode)
+    - Reduce connections: `conn: 1`
+    - Enable write batching: `wdelay: true` (manual mode)
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Encryption Configuration](/configuration/encryption)
+- [Client Configuration](/configuration/client)
+- [Server Configuration](/configuration/server)

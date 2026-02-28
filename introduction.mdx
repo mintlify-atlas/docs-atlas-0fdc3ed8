@@ -1,0 +1,81 @@
+---
+title: Introduction
+description: A bidirectional packet-level proxy built using raw sockets
+---
+
+# What is paqet?
+
+paqet is a bidirectional packet level proxy built using raw sockets. It forwards traffic from a local client to a remote server, bypassing the host operating system's TCP/IP stack, using KCP for secure, reliable transport.
+
+<Warning>
+  **Development Status Notice**
+  
+  This project is in **active development**. APIs, configuration formats, and interfaces may change without notice. Use with caution in production environments.
+</Warning>
+
+## How It Works
+
+paqet captures packets using `pcap` and injects crafted TCP packets containing encrypted transport data. KCP provides reliable, encrypted communication optimized for high-loss networks using aggressive retransmission, forward error correction, and symmetric encryption.
+
+```
+[Your App] <------> [paqet Client] <===== Raw TCP Packet =====> [paqet Server] <------> [Target Server]
+(e.g. curl)        (localhost:1080)        (Internet)          (Public IP:PORT)     (e.g. https://httpbin.org)
+```
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Raw Packet-Level Proxy" icon="network-wired">
+    Operates at the packet level using raw sockets, bypassing the host OS's TCP/IP stack for granular control
+  </Card>
+  
+  <Card title="KCP Transport" icon="lock">
+    Reliable, encrypted communication optimized for high-loss networks with aggressive retransmission and forward error correction
+  </Card>
+  
+  <Card title="SOCKS5 Proxy" icon="globe">
+    Acts as a SOCKS5 proxy server, accepting connections from applications and dynamically forwarding them to any destination
+  </Card>
+  
+  <Card title="Firewall Bypass" icon="shield-halved">
+    Bypasses firewalls that detect standard handshake protocols and kernel-level connection tracking
+  </Card>
+  
+  <Card title="Cross-Platform" icon="laptop-code">
+    Supports Linux, macOS, and Windows with platform-specific optimizations
+  </Card>
+  
+  <Card title="Network Security Research" icon="magnifying-glass">
+    Ideal for network security research and scenarios requiring packet-level control
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+paqet use cases include:
+
+- Bypassing firewalls that detect standard handshake protocols and kernel-level connection tracking
+- Network security research
+- Scenarios requiring granular control at the packet level
+
+<Info>
+  While more complex to configure than general-purpose VPN solutions, paqet offers granular control at the packet level.
+</Info>
+
+## Architecture
+
+paqet uses `pcap` to hook in at a much lower level than traditional applications. It requests a copy of every packet directly from the network driver, before the main OS TCP/IP stack and firewall get to process it.
+
+This means traditional firewall rules (like `ufw deny <PORT>`) will have no effect on the proxy's operation, as paqet receives and processes the packet before the firewall can block it.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with paqet in minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation instructions for all platforms
+  </Card>
+</CardGroup>

@@ -1,0 +1,242 @@
+---
+title: Security Model
+description: Understanding paqet's security characteristics, encryption, and firewall bypass mechanism
+---
+
+paqet's security model is fundamentally different from traditional network applications due to its use of raw packet capture and injection. Understanding these differences is critical for secure deployment.
+
+## The pcap Approach and Firewall Bypass
+
+### Why Standard Firewalls Don't Work
+
+A normal application uses the OS's TCP/IP stack. When a packet arrives, it travels up the stack where `netfilter` (the backend for `ufw`/`firewalld`) inspects it. If a firewall rule blocks the port, the packet is dropped and never reaches the application.
+
+**Normal Application Stack**
+```
+┌────────────────────────┐
+│   Normal Application   │  ← Data is received here
+└──────────┬─────────────┘
+           ↑
+┌──────────┴─────────────┐
+│   OS TCP/IP Stack      │  ← Firewall (netfilter) runs here
+│  (Connection Tracking) │
+└──────────┬─────────────┘
+           ↑
+┌──────────┴─────────────┐
+│   Network Driver       │
+└────────────────────────┘
+```
+
+Firewall rules like `ufw deny 9999` work because netfilter can intercept and drop packets before they reach the application.
+
+### How paqet Bypasses Firewalls
+
+paqet uses `pcap` to hook in at a much lower level. It requests a copy of every packet directly from the network driver, **before** the main OS TCP/IP stack and firewall process it.
+
+**paqet's Bypassed Stack**
+```
+┌────────────────────────┐
+│   paqet Application    │  ← Gets a packet copy immediately
+└──────┬─────────────────┘
+       ↑        \
+  (pcap copy)    \  (Original packet continues up)
+       ↑          ↓
+┌──────┴──────────┴─────┐
+│   OS TCP/IP Stack      │  ← Firewall drops the original packet,
+│  (Connection Tracking) │     but paqet already has its copy.
+└──────────┬─────────────┘
+           ↑
+┌──────────┴─────────────┐
+│   Network Driver       │
+└────────────────────────┘
+```
+
+<Warning>
+This means a rule like `ufw deny <PORT>` will have **no effect** on paqet's operation, as paqet receives and processes the packet before `ufw` can block it.
+</Warning>
+
+### Critical Implication
+
+**Firewall bypass is bidirectional:**
+- **Inbound**: paqet can receive packets on ports that are "blocked" by the firewall
+- **Outbound**: paqet can send packets that appear to come from "blocked" ports
+
+This is why:
+1. **Cloud provider security groups still matter** - they operate at the hypervisor/network level, before packets reach your instance
+2. **Physical network firewalls still work** - they inspect packets before they reach the host
+3. **Application-level authentication is critical** - you cannot rely on firewall rules to restrict access
+
+## Encryption Capabilities
+
+paqet uses KCP's built-in encryption to secure the transport layer. Encryption is configured via the `transport.kcp.block` parameter.
+
+### Supported Encryption Modes
+
+| Mode | Security | Performance | Authentication |
+|------|----------|-------------|----------------|
+| `aes` | High | Good | Yes |
+| `chacha20` | High | Better (on some platforms) | Yes |
+| `3des` | Medium | Lower | Yes |
+| `tea` | Low | Good | Yes |
+| `xor` | None (obfuscation only) | Best | Yes |
+| `none` | None | Best | **NO** |
+| `null` | None | Best | **NO** |
+
+### Recommended Configuration
+
+**Production environments:**
+```yaml
+transport:
+  kcp:
+    block: "aes"  # or "chacha20"
+    key: "<strong-random-key>"  # Use paqet secret to generate
+```
+
+**Testing/debugging only:**
+```yaml
+transport:
+  kcp:
+    block: "xor"  # Obfuscation with authentication
+    key: "<any-shared-key>"
+```
+
+<Info>
+Use the `paqet secret` command to generate cryptographically secure keys:
+```bash
+./paqet secret
+```
+</Info>
+
+## Security Considerations
+
+### 1. No Authentication in Some Modes
+
+<Warning>
+**Critical Security Risk**: The `none` and `null` encryption modes disable authentication entirely.
+
+Anyone with your server's IP address and port can:
+- Connect to your server
+- Use it as a proxy
+- Access internal network resources
+- Intercept/modify traffic
+
+**Never use `none` or `null` modes outside of isolated testing environments.**
+</Warning>
+
+From the README (line 234-237):
+```
+⚠️ Warning: `none` and `null` modes disable authentication, 
+anyone with your server IP and port can connect.
+
+- none - Plaintext with protocol header (protocol-compatible)
+- null - Raw data, no header (highest performance, least secure)
+```
+
+### 2. Kernel Interference Requires iptables Rules
+
+Although paqet bypasses the normal TCP/IP stack, the OS kernel can still see incoming packets and generate TCP RST packets since it has no knowledge of the connection.
+
+These kernel-generated resets can:
+- Corrupt connection state in NAT devices
+- Cause packet drops in stateful firewalls  
+- Lead to premature connection termination
+- Create instability in the tunnel
+
+**Required iptables configuration** (from README lines 149-168):
+
+```bash
+# Replace <PORT> with your server listen port (e.g., 9999)
+
+# 1. Bypass connection tracking (conntrack) - ESSENTIAL
+sudo iptables -t raw -A PREROUTING -p tcp --dport <PORT> -j NOTRACK
+sudo iptables -t raw -A OUTPUT -p tcp --sport <PORT> -j NOTRACK
+
+# 2. Prevent kernel from sending TCP RST packets
+sudo iptables -t mangle -A OUTPUT -p tcp --sport <PORT> --tcp-flags RST RST -j DROP
+
+# Make rules persistent across reboots:
+# Debian/Ubuntu:
+sudo iptables-save > /etc/iptables/rules.v4
+
+# RHEL/CentOS:
+sudo service iptables save
+```
+
+<Warning>
+**Server deployment without these iptables rules will result in unstable connections.**
+
+These rules ensure that only paqet handles traffic for the connection port, preventing kernel interference.
+</Warning>
+
+### 3. Avoid Standard Ports
+
+From the README (lines 143-146):
+
+<Warning>
+**Do not use ports 80, 443, or any other standard ports** for your server configuration.
+
+iptables rules can also affect outgoing connections from the server. Choose non-standard, high-numbered ports (e.g., 9999, 8888) instead.
+</Warning>
+
+### 4. Cloud Provider Firewalls
+
+While paqet bypasses OS-level firewalls, **cloud provider security groups still apply** because they operate at the hypervisor/network level.
+
+**You must configure your cloud provider's firewall to allow:**
+- Inbound TCP traffic on your server's listen port
+- Outbound TCP traffic from your server (for responses)
+
+<Info>
+Common cloud provider firewall locations:
+- **AWS**: Security Groups in EC2 console
+- **GCP**: Firewall Rules in VPC console  
+- **Azure**: Network Security Groups
+- **DigitalOcean**: Cloud Firewalls
+</Info>
+
+### 5. Key Management
+
+**Critical security practices:**
+
+1. **Generate strong keys** using `paqet secret` command
+2. **Use different keys** for different deployments (dev/staging/prod)
+3. **Rotate keys periodically** (requires coordinated client/server updates)
+4. **Never commit keys** to version control
+5. **Ensure client and server keys match exactly** - even a single character difference will cause connection failure
+
+From the client configuration (line 105):
+```yaml
+transport:
+  kcp:
+    key: "your-secret-key-here"  # CHANGE ME: Secret key (must match server)
+```
+
+### 6. Exposure Risks
+
+Because paqet provides a proxy to your server's network:
+
+**Without proper security:**
+- Anyone can use your server as an exit node
+- Your server's IP can be used for malicious activity  
+- Internal network resources may be exposed
+- You may face legal liability for proxied traffic
+
+**Mitigation:**
+- Always use authenticated encryption modes (`aes`, `chacha20`)
+- Monitor server logs for unusual activity
+- Implement rate limiting if needed
+- Consider IP-based restrictions at the cloud provider level
+- Use strong, unique keys
+
+## Security Best Practices Summary
+
+1. ✅ **Always use `aes` or `chacha20` encryption in production**
+2. ✅ **Generate keys with `paqet secret` command**
+3. ✅ **Apply all required iptables rules on the server**
+4. ✅ **Use non-standard ports (9999, 8888, etc.)**
+5. ✅ **Configure cloud provider security groups correctly**
+6. ✅ **Monitor logs for unauthorized access attempts**
+7. ✅ **Rotate keys periodically**
+8. ❌ **Never use `none` or `null` modes outside testing**
+9. ❌ **Never use standard ports (80, 443)**
+10. ❌ **Never rely on OS firewall rules for access control**

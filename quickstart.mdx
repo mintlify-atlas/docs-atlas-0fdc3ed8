@@ -1,80 +1,225 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get up and running with paqet in minutes
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+This guide will help you set up a working paqet proxy quickly.
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+## Prerequisites
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  `libpcap` development libraries must be installed on both the client and server machines.
 </Note>
+
+- **Linux:** No prerequisites - binaries are statically linked
+- **macOS:** Comes pre-installed with Xcode Command Line Tools. Install with `xcode-select --install`
+- **Windows:** Install Npcap. Download from [npcap.com](https://npcap.com/)
+
+## Setup Steps
+
+<Steps>
+  <Step title="Download the Binary">
+    Download the pre-compiled binary for your client and server operating systems from the [Releases page](https://github.com/hanselime/paqet/releases/latest).
+    
+    Make the binary executable:
+    ```bash
+    chmod +x ./paqet_linux_amd64
+    ```
+    
+    <Note>
+      You will need root privileges to use raw sockets.
+    </Note>
+  </Step>
+
+  <Step title="Find Your Network Details">
+    You'll need to find your network interface name, local IP, and the MAC address of your network's gateway (router).
+    
+    **On Linux:**
+    
+    1. **Find Interface and Local IP:** Run `ip a`. Look for your primary network card (e.g., `eth0`, `ens3`). Its IP address is listed under `inet`.
+    2. **Find Gateway MAC:**
+       - First, find your gateway's IP: `ip r | grep default`
+       - Then, find its MAC address with `arp -n <gateway_ip>` (e.g., `arp -n 192.168.1.1`)
+    
+    **On macOS:**
+    
+    1. **Find Interface and Local IP:** Run `ifconfig`. Look for your primary interface (e.g., `en0`). Its IP is listed under `inet`.
+    2. **Find Gateway MAC:**
+       - First, find your gateway's IP: `netstat -rn | grep default`
+       - Then, find its MAC address with `arp -n <gateway_ip>` (e.g., `arp -n 192.168.1.1`)
+    
+    **On Windows:**
+    
+    1. **Find Interface and Local IP:** Run `ipconfig /all` and note your active network adapter (Ethernet or Wi-Fi):
+       - Its **IP Address**
+       - The **Gateway IP Address**
+    2. **Find Interface device GUID:** Windows requires the Npcap device GUID. In PowerShell, run `Get-NetAdapter | Select-Object Name, InterfaceGuid`. Note the **Name** and **InterfaceGuid** of your active network interface, and format the GUID as `\Device\NPF_{GUID}`.
+    3. **Find Gateway MAC Address:** Run: `arp -a <gateway_ip>`. Note the MAC address for the gateway.
+  </Step>
+
+  <Step title="Configure the Server">
+    Create a `config.yaml` file for your server:
+    
+    ```yaml
+    # Role must be explicitly set
+    role: "server"
+    
+    # Logging configuration
+    log:
+      level: "info" # none, debug, info, warn, error, fatal
+    
+    # Server listen configuration
+    listen:
+      addr: ":9999" # CHANGE ME: Server listen port
+    
+    # Network interface settings
+    network:
+      interface: "eth0" # CHANGE ME: Network interface (eth0, ens3, en0, etc.)
+      ipv4:
+        addr: "10.0.0.100:9999" # CHANGE ME: Server IPv4 and port (port must match listen.addr)
+        router_mac: "aa:bb:cc:dd:ee:ff" # CHANGE ME: Gateway/router MAC address
+    
+    # Transport protocol configuration
+    transport:
+      protocol: "kcp" # Transport protocol (currently only "kcp" supported)
+      kcp:
+        block: "aes" # Encryption algorithm
+        key: "your-secret-key-here" # CHANGE ME: Secret key (must match client)
+    ```
+    
+    <Warning>
+      **Avoid Standard Ports**
+      
+      Do not use ports 80, 443, or any other standard ports, because iptables rules can also affect outgoing connections from the server. Choose non-standard ports (e.g., 9999, 8888, or other high-numbered ports) for your server configuration.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Critical Firewall Rules">
+    Although packets are handled at a low level, the OS kernel can still see incoming packets on the connection port and generate TCP RST packets. These kernel generated resets can corrupt connection state in NAT devices and stateful firewalls, causing instability, packet drops, and premature termination.
+    
+    You **must** configure `iptables` on the server to prevent the kernel from interfering.
+    
+    Run these commands as root on your server:
+    
+    ```bash
+    # Replace <PORT> with your server listen port (e.g., 9999)
+    
+    # 1. Bypass connection tracking (conntrack) for the connection port. This is essential.
+    # This tells the kernel's netfilter to ignore packets on this port for state tracking.
+    sudo iptables -t raw -A PREROUTING -p tcp --dport <PORT> -j NOTRACK
+    sudo iptables -t raw -A OUTPUT -p tcp --sport <PORT> -j NOTRACK
+    
+    # 2. Prevent the kernel from sending TCP RST packets that would kill the session.
+    # This drops any RST packets the kernel tries to send from the connection port.
+    sudo iptables -t mangle -A OUTPUT -p tcp --sport <PORT> --tcp-flags RST RST -j DROP
+    
+    # An alternative for rule 2 if issues persist:
+    sudo iptables -t filter -A INPUT -p tcp --dport <PORT> -j ACCEPT
+    sudo iptables -t filter -A OUTPUT -p tcp --sport <PORT> -j ACCEPT
+    
+    # To make rules persistent across reboots:
+    # Debian/Ubuntu: sudo iptables-save > /etc/iptables/rules.v4
+    # RHEL/CentOS: sudo service iptables save
+    ```
+    
+    <Info>
+      These rules ensure that only the application handles traffic for the connection port.
+    </Info>
+  </Step>
+
+  <Step title="Configure the Client">
+    Create a `config.yaml` file for your client:
+    
+    ```yaml
+    # Role must be explicitly set
+    role: "client"
+    
+    # Logging configuration
+    log:
+      level: "info" # none, debug, info, warn, error, fatal
+    
+    # SOCKS5 proxy configuration (client mode)
+    socks5:
+      - listen: "127.0.0.1:1080" # SOCKS5 proxy listen address
+    
+    # Network interface settings
+    network:
+      interface: "en0" # CHANGE ME: Network interface (en0, eth0, wlan0, etc.)
+      # guid: "\Device\NPF_{...}" # Windows only (Npcap).
+      ipv4:
+        addr: "192.168.1.100:0" # CHANGE ME: Local IP (use port 0 for random port)
+        router_mac: "aa:bb:cc:dd:ee:ff" # CHANGE ME: Gateway/router MAC address
+    
+    # Server connection settings
+    server:
+      addr: "10.0.0.100:9999" # CHANGE ME: paqet server address and port
+    
+    # Transport protocol configuration
+    transport:
+      protocol: "kcp" # Transport protocol (currently only "kcp" supported)
+      kcp:
+        block: "aes" # Encryption algorithm
+        key: "your-secret-key-here" # CHANGE ME: Secret key (must match server)
+    ```
+    
+    <Note>
+      The client acts as a SOCKS5 proxy server, accepting connections from applications and dynamically forwarding them through the raw TCP packets to any destination.
+    </Note>
+  </Step>
+
+  <Step title="Start the Server">
+    On the server, run:
+    
+    ```bash
+    # Make sure to use the binary name you downloaded for your server's OS/Arch.
+    sudo ./paqet_linux_amd64 run -c config.yaml
+    ```
+  </Step>
+
+  <Step title="Start the Client">
+    On the client, run:
+    
+    ```bash
+    # Make sure to use the binary name you downloaded for your client's OS/Arch.
+    sudo ./paqet_darwin_arm64 run -c config.yaml
+    ```
+  </Step>
+
+  <Step title="Test the Connection">
+    Once the client and server are running, test the SOCKS5 proxy:
+    
+    ```bash
+    # Test with curl using the SOCKS5 proxy
+    curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+    ```
+    
+    This request will be proxied over raw TCP packets to the server, and then forwarded according to the client mode configuration. The output should show your server's public IP address, confirming the connection is working.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. **Permission Denied:** Ensure you are running with `sudo`.
+2. **Connection Times Out:**
+   - **Transport Configuration Mismatch:** Ensure `transport.kcp.key` is exactly identical on client and server
+   - **`iptables` Rules:** Did you apply the firewall rules on the server?
+   - **Incorrect Network Details:** Double-check all IPs, MAC addresses, and interface names.
+   - **Cloud Provider Firewalls:** Ensure your cloud provider's security group allows TCP traffic on your `listen.addr` port.
+   - **NAT/Port Configuration:** For servers, ensure `listen.addr` and `network.ipv4.addr` ports match. For clients, use port `0` in `network.ipv4.addr` for automatic port assignment to avoid conflicts.
+3. **Use `ping` and `dump`:** Use `paqet ping -c config.yaml` to test the connection. Use `paqet dump -p <PORT>` on the server to see if packets are arriving.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation Guide" icon="download" href="/installation">
+    Detailed installation instructions for all platforms
+  </Card>
+  
+  <Card title="Configuration Reference" icon="gear" href="/configuration/overview">
+    Complete configuration documentation
+  </Card>
+</CardGroup>

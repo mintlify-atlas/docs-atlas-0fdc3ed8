@@ -1,0 +1,369 @@
+---
+title: Network Configuration
+description: How to find and configure network details for paqet
+---
+
+Both the paqet client and server require detailed network configuration to craft and inject raw TCP packets. This guide explains how to gather the necessary information for your platform.
+
+## Required Network Information
+
+You need to collect three pieces of information:
+
+1. **Network Interface Name** - The name of your network adapter
+2. **Local IP Address** - Your machine's IP address on the local network
+3. **Gateway MAC Address** - The MAC address of your router/gateway
+
+## Finding Network Interface Name
+
+<Tabs>
+  <Tab title="Linux">
+    Use the `ip a` command to list all network interfaces:
+
+    ```bash
+    ip a
+    ```
+
+    Example output:
+    ```
+    1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536
+    2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500
+        inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0
+    3: wlan0: <BROADCAST,MULTICAST> mtu 1500
+    ```
+
+    Common interface names:
+    - `eth0`, `eth1` - Ethernet interfaces
+    - `ens3`, `ens5` - Predictable network interface names
+    - `wlan0`, `wlan1` - Wireless interfaces
+
+    In the example above, the active interface is `eth0`.
+  </Tab>
+
+  <Tab title="macOS">
+    Use the `ifconfig` command to list all network interfaces:
+
+    ```bash
+    ifconfig
+    ```
+
+    Example output:
+    ```
+    lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+    en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+        inet 192.168.1.100 netmask 0xffffff00 broadcast 192.168.1.255
+    en1: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+    ```
+
+    Common interface names:
+    - `en0` - Primary Ethernet or Wi-Fi
+    - `en1` - Secondary network interface
+    - `bridge0` - Network bridge
+
+    In the example above, the active interface is `en0`.
+  </Tab>
+
+  <Tab title="Windows">
+    Use `ipconfig /all` to list network adapters:
+
+    ```powershell
+    ipconfig /all
+    ```
+
+    Example output:
+    ```
+    Ethernet adapter Ethernet:
+       Connection-specific DNS Suffix  . : 
+       IPv4 Address. . . . . . . . . . . : 192.168.1.100
+       Subnet Mask . . . . . . . . . . . : 255.255.255.0
+       Default Gateway . . . . . . . . . : 192.168.1.1
+    ```
+
+    Common adapter names:
+    - `Ethernet` - Wired Ethernet connection
+    - `Wi-Fi` - Wireless connection
+    - `Ethernet 2` - Additional network adapters
+
+    **Get Interface GUID:**
+
+    Windows requires the Npcap device GUID. In PowerShell:
+
+    ```powershell
+    Get-NetAdapter | Select-Object Name, InterfaceGuid
+    ```
+
+    Example output:
+    ```
+    Name     InterfaceGuid
+    ----     -------------
+    Ethernet {12345678-1234-1234-1234-123456789ABC}
+    Wi-Fi    {ABCDEFAB-ABCD-ABCD-ABCD-ABCDEFABCDEF}
+    ```
+
+    Format the GUID with the Npcap device prefix:
+    ```
+    \Device\NPF_{12345678-1234-1234-1234-123456789ABC}
+    ```
+
+    Use this GUID in your `network.guid` configuration.
+  </Tab>
+</Tabs>
+
+## Finding Local IP Address
+
+Your local IP address is shown alongside your network interface:
+
+<Tabs>
+  <Tab title="Linux">
+    ```bash
+    ip a show eth0
+    ```
+
+    Look for the line starting with `inet`:
+    ```
+    inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0
+    ```
+
+    Your IP address is `192.168.1.100`.
+  </Tab>
+
+  <Tab title="macOS">
+    ```bash
+    ifconfig en0 | grep "inet "
+    ```
+
+    Example output:
+    ```
+    inet 192.168.1.100 netmask 0xffffff00 broadcast 192.168.1.255
+    ```
+
+    Your IP address is `192.168.1.100`.
+  </Tab>
+
+  <Tab title="Windows">
+    ```powershell
+    ipconfig
+    ```
+
+    Look for `IPv4 Address` under your active adapter:
+    ```
+    IPv4 Address. . . . . . . . . . . : 192.168.1.100
+    ```
+
+    Your IP address is `192.168.1.100`.
+  </Tab>
+</Tabs>
+
+## Finding Gateway IP Address
+
+The gateway is your router's IP address on the local network:
+
+<Tabs>
+  <Tab title="Linux">
+    ```bash
+    ip r | grep default
+    ```
+
+    Example output:
+    ```
+    default via 192.168.1.1 dev eth0 proto dhcp metric 100
+    ```
+
+    Your gateway IP is `192.168.1.1`.
+  </Tab>
+
+  <Tab title="macOS">
+    ```bash
+    netstat -rn | grep default
+    ```
+
+    Example output:
+    ```
+    default            192.168.1.1        UGSc       en0
+    ```
+
+    Your gateway IP is `192.168.1.1`.
+  </Tab>
+
+  <Tab title="Windows">
+    ```powershell
+    ipconfig
+    ```
+
+    Look for `Default Gateway` under your active adapter:
+    ```
+    Default Gateway . . . . . . . . . : 192.168.1.1
+    ```
+
+    Your gateway IP is `192.168.1.1`.
+  </Tab>
+</Tabs>
+
+## Finding Gateway MAC Address
+
+The gateway MAC address is required for crafting raw Ethernet frames:
+
+<Tabs>
+  <Tab title="Linux">
+    Use the `arp` command with your gateway IP:
+
+    ```bash
+    arp -n 192.168.1.1
+    ```
+
+    Example output:
+    ```
+    Address                  HWtype  HWaddress           Flags Mask            Iface
+    192.168.1.1              ether   a0:b1:c2:d3:e4:f5   C                     eth0
+    ```
+
+    Your gateway MAC address is `a0:b1:c2:d3:e4:f5`.
+
+    <Note>
+      If the MAC address shows as `(incomplete)`, ping the gateway first:
+      ```bash
+      ping -c 1 192.168.1.1
+      arp -n 192.168.1.1
+      ```
+    </Note>
+  </Tab>
+
+  <Tab title="macOS">
+    Use the `arp` command with your gateway IP:
+
+    ```bash
+    arp -n 192.168.1.1
+    ```
+
+    Example output:
+    ```
+    192.168.1.1 (192.168.1.1) at a0:b1:c2:d3:e4:f5 on en0 ifscope [ethernet]
+    ```
+
+    Your gateway MAC address is `a0:b1:c2:d3:e4:f5`.
+
+    <Note>
+      If the MAC address shows as `(incomplete)`, ping the gateway first:
+      ```bash
+      ping -c 1 192.168.1.1
+      arp -n 192.168.1.1
+      ```
+    </Note>
+  </Tab>
+
+  <Tab title="Windows">
+    Use the `arp` command with your gateway IP:
+
+    ```powershell
+    arp -a 192.168.1.1
+    ```
+
+    Example output:
+    ```
+    Interface: 192.168.1.100 --- 0xb
+      Internet Address      Physical Address      Type
+      192.168.1.1           a0-b1-c2-d3-e4-f5     dynamic
+    ```
+
+    Your gateway MAC address is `a0-b1-c2-d3-e4-f5`.
+
+    Format with colons for the config file: `a0:b1:c2:d3:e4:f5`
+  </Tab>
+</Tabs>
+
+## TCP Flag Cycling
+
+paqet allows you to customize the TCP flags used in crafted packets to vary traffic patterns and potentially evade detection.
+
+### What are TCP Flags?
+
+TCP flags are control bits in TCP headers that indicate the purpose or state of a packet:
+
+- **S (SYN)** - Synchronize, initiates a connection
+- **A (ACK)** - Acknowledgment of received data
+- **P (PSH)** - Push, tells receiver to process data immediately
+- **F (FIN)** - Finish, closes a connection
+- **R (RST)** - Reset, aborts a connection
+- **U (URG)** - Urgent data pointer is valid
+
+### Flag Configuration
+
+You can configure TCP flags in your config file:
+
+```yaml
+network:
+  tcp:
+    local_flag: ["PA"]   # Flags for outgoing packets
+    remote_flag: ["PA"]  # Flags for incoming packets (client only)
+```
+
+### Common Flag Patterns
+
+- `["PA"]` - Push + Acknowledgment (standard data transfer, default)
+- `["S"]` - SYN flag (mimics connection setup)
+- `["A"]` - ACK flag (acknowledgment only)
+- `["SA"]` - SYN + ACK (mimics connection response)
+
+### Flag Cycling
+
+When you provide multiple flag patterns in an array, paqet cycles through them:
+
+```yaml
+network:
+  tcp:
+    local_flag: ["PA", "A", "S"]
+```
+
+This configuration cycles through:
+1. First packet: Push + Acknowledgment
+2. Second packet: Acknowledgment
+3. Third packet: SYN
+4. Fourth packet: Push + Acknowledgment (cycle repeats)
+
+This variability can help evade simple pattern-based detection systems.
+
+<Warning>
+  Unusual flag combinations may be detected or blocked by sophisticated firewalls. The default `["PA"]` pattern mimics normal TCP data transfer and is recommended for most use cases.
+</Warning>
+
+## Configuration Example
+
+Here's a complete network configuration example:
+
+<Tabs>
+  <Tab title="Linux/macOS">
+    ```yaml
+    network:
+      interface: "eth0"                     # Your interface name
+      ipv4:
+        addr: "192.168.1.100:0"             # Your local IP (client uses :0)
+        router_mac: "a0:b1:c2:d3:e4:f5"     # Your gateway MAC
+      tcp:
+        local_flag: ["PA"]                  # TCP flags for outgoing packets
+        remote_flag: ["PA"]                 # TCP flags for incoming packets
+    ```
+  </Tab>
+
+  <Tab title="Windows">
+    ```yaml
+    network:
+      interface: "Ethernet"                                           # Adapter name
+      guid: "\\Device\\NPF_{12345678-1234-1234-1234-123456789ABC}"  # Npcap GUID
+      ipv4:
+        addr: "192.168.1.100:0"                                       # Your local IP
+        router_mac: "a0:b1:c2:d3:e4:f5"                               # Your gateway MAC
+      tcp:
+        local_flag: ["PA"]
+        remote_flag: ["PA"]
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  For clients, always use port `0` in `network.ipv4.addr` for automatic port assignment. For servers, use the same port as in `listen.addr`.
+</Note>
+
+## Next Steps
+
+- [Set up the client](/guides/client-setup)
+- [Set up the server](/guides/server-setup)
+- [Configure firewall rules](/guides/firewall-configuration)

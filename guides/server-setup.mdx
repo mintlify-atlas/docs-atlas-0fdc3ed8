@@ -1,0 +1,293 @@
+---
+title: Server Setup
+description: Step-by-step guide to configure and run the paqet server
+---
+
+The paqet server receives encrypted raw TCP packets from clients and forwards traffic to destination servers. It must be deployed on a machine with a public IP address.
+
+<Steps>
+  <Step title="Find Your Network Details">
+    Before configuring the server, you need to gather network information for your server machine.
+
+    <Tabs>
+      <Tab title="Linux">
+        **Find Interface and Local IP:**
+        ```bash
+        ip a
+        ```
+        Look for your primary network interface (e.g., `eth0`, `ens3`). The IP address is listed under `inet`.
+
+        **Find Gateway MAC Address:**
+        ```bash
+        # First, find your gateway's IP
+        ip r | grep default
+        
+        # Then, find its MAC address (replace with your gateway IP)
+        arp -n 192.168.1.1
+        ```
+      </Tab>
+
+      <Tab title="macOS">
+        **Find Interface and Local IP:**
+        ```bash
+        ifconfig
+        ```
+        Look for your primary interface (e.g., `en0`). The IP is listed under `inet`.
+
+        **Find Gateway MAC Address:**
+        ```bash
+        # First, find your gateway's IP
+        netstat -rn | grep default
+        
+        # Then, find its MAC address (replace with your gateway IP)
+        arp -n 192.168.1.1
+        ```
+      </Tab>
+
+      <Tab title="Windows">
+        **Find Interface and Local IP:**
+        ```powershell
+        ipconfig /all
+        ```
+        Note your active network adapter's IP Address and Gateway IP Address.
+
+        **Find Interface GUID:**
+        
+        Windows requires the Npcap device GUID. Run in PowerShell:
+        ```powershell
+        Get-NetAdapter | Select-Object Name, InterfaceGuid
+        ```
+        Note the **Name** and **InterfaceGuid** of your active network interface. Format the GUID as:
+        ```
+        \Device\NPF_{YOUR-GUID-HERE}
+        ```
+
+        **Find Gateway MAC Address:**
+        ```powershell
+        arp -a 192.168.1.1
+        ```
+        Replace with your gateway IP address.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create Server Configuration File">
+    Create a file named `config.yaml` in the same directory as your paqet binary:
+
+    ```yaml config.yaml
+    # Role must be explicitly set
+    role: "server"
+
+    # Logging configuration
+    log:
+      level: "info" # none, debug, info, warn, error, fatal
+
+    # Server listen configuration
+    listen:
+      addr: ":9999" # CHANGE ME: Server listen port (must match network.ipv4.addr port)
+                     # WARNING: Do not use standard ports (80, 443, etc.)
+
+    # Network interface settings
+    network:
+      interface: "eth0" # CHANGE ME: Network interface (eth0, ens3, en0, etc.)
+      ipv4:
+        addr: "10.0.0.100:9999" # CHANGE ME: Server IPv4 and port (port must match listen.addr)
+        router_mac: "aa:bb:cc:dd:ee:ff" # CHANGE ME: Gateway/router MAC address
+
+    # Transport protocol configuration
+    transport:
+      protocol: "kcp" # Transport protocol (currently only "kcp" supported)
+      kcp:
+        block: "aes" # Encryption algorithm
+        key: "your-secret-key-here" # CHANGE ME: Secret key (must match client)
+    ```
+
+    <Warning>
+      Do not use standard ports like 80 or 443 for `listen.addr`. The iptables rules required by paqet can affect outgoing connections on these ports. Use non-standard ports like 9999 or 8888 instead.
+    </Warning>
+
+    <Note>
+      See the [complete server configuration reference](/configuration/server) for all available options.
+    </Note>
+  </Step>
+
+  <Step title="Configure Listen Address">
+    Set the port your server will listen on:
+
+    ```yaml
+    listen:
+      addr: ":9999" # Listen on all interfaces, port 9999
+    ```
+
+    You can also bind to a specific IP:
+    ```yaml
+    listen:
+      addr: "10.0.0.100:9999" # Listen only on this IP
+    ```
+
+    <Note>
+      The port in `listen.addr` must match the port in `network.ipv4.addr`.
+    </Note>
+  </Step>
+
+  <Step title="Configure Network Interface">
+    Update the `network` section with your server's network details from Step 1:
+
+    ```yaml
+    network:
+      interface: "eth0" # Your server's network interface
+      ipv4:
+        addr: "10.0.0.100:9999" # Your server's IP and port
+        router_mac: "aa:bb:cc:dd:ee:ff" # Your gateway MAC address
+    ```
+
+    <Warning>
+      The port in `network.ipv4.addr` **must match** the port in `listen.addr`.
+    </Warning>
+  </Step>
+
+  <Step title="Set Encryption Key">
+    Configure the encryption key that matches your client:
+
+    ```yaml
+    transport:
+      kcp:
+        block: "aes"
+        key: "your-secret-key-here" # Must match client exactly
+    ```
+
+    Generate a secure key using:
+    ```bash
+    ./paqet secret
+    ```
+
+    Share this key securely with your client configuration.
+  </Step>
+
+  <Step title="Configure Firewall Rules">
+    **Critical**: You must configure iptables to prevent kernel interference.
+
+    ```bash
+    # Replace 9999 with your actual port
+    PORT=9999
+
+    # Bypass connection tracking
+    sudo iptables -t raw -A PREROUTING -p tcp --dport $PORT -j NOTRACK
+    sudo iptables -t raw -A OUTPUT -p tcp --sport $PORT -j NOTRACK
+
+    # Prevent kernel from sending RST packets
+    sudo iptables -t mangle -A OUTPUT -p tcp --sport $PORT --tcp-flags RST RST -j DROP
+    ```
+
+    See the [Firewall Configuration](/guides/firewall-configuration) guide for detailed instructions.
+
+    <Warning>
+      Without these iptables rules, the server will not function properly. The kernel will interfere with raw packet handling.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Cloud Provider Security Group">
+    If running on a cloud provider (AWS, GCP, Azure, etc.), ensure your security group allows TCP traffic on your listen port:
+
+    - **Protocol**: TCP
+    - **Port**: Your listen port (e.g., 9999)
+    - **Source**: Your client's IP or 0.0.0.0/0 for any source
+  </Step>
+
+  <Step title="Run the Server">
+    Make the binary executable and run with root privileges:
+
+    <Tabs>
+      <Tab title="Linux">
+        ```bash
+        # Make executable
+        chmod +x ./paqet_linux_amd64
+        
+        # Run the server
+        sudo ./paqet_linux_amd64 run -c config.yaml
+        ```
+      </Tab>
+
+      <Tab title="macOS">
+        ```bash
+        # Make executable
+        chmod +x ./paqet_darwin_arm64
+        
+        # Run the server
+        sudo ./paqet_darwin_arm64 run -c config.yaml
+        ```
+      </Tab>
+
+      <Tab title="Windows">
+        ```powershell
+        # Run as Administrator in PowerShell
+        .\paqet_windows_amd64.exe run -c config.yaml
+        ```
+      </Tab>
+    </Tabs>
+
+    <Warning>
+      Root/Administrator privileges are required to use raw sockets.
+    </Warning>
+  </Step>
+</Steps>
+
+## Example Configuration
+
+Here's a complete working example for a Linux server:
+
+```yaml
+role: "server"
+
+log:
+  level: "info"
+
+listen:
+  addr: ":9999"
+
+network:
+  interface: "eth0"
+  ipv4:
+    addr: "203.0.113.50:9999"
+    router_mac: "a0:b1:c2:d3:e4:f5"
+
+transport:
+  protocol: "kcp"
+  kcp:
+    block: "aes"
+    key: "my-secret-encryption-key"
+```
+
+## Running as a Service
+
+For production deployments, consider running paqet as a systemd service:
+
+```ini /etc/systemd/system/paqet.service
+[Unit]
+Description=paqet Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/paqet
+ExecStart=/opt/paqet/paqet run -c /opt/paqet/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+```bash
+sudo systemctl enable paqet
+sudo systemctl start paqet
+sudo systemctl status paqet
+```
+
+## Next Steps
+
+- [Configure the client](/guides/client-setup)
+- [Learn about network configuration](/guides/network-configuration)
+- [Understand firewall requirements](/guides/firewall-configuration)

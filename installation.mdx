@@ -1,0 +1,159 @@
+---
+title: Installation
+description: Install paqet on Linux, macOS, and Windows
+---
+
+# Installation
+
+This guide covers the installation of paqet on all supported platforms.
+
+## Download from Releases
+
+Download the pre-compiled binary for your client and server operating systems from the [Releases page](https://github.com/hanselime/paqet/releases/latest).
+
+Choose the appropriate binary for your platform:
+- **Linux AMD64:** `paqet_linux_amd64`
+- **Linux ARM64:** `paqet_linux_arm64`
+- **macOS AMD64:** `paqet_darwin_amd64`
+- **macOS ARM64:** `paqet_darwin_arm64`
+- **Windows AMD64:** `paqet_windows_amd64.exe`
+
+## Platform-Specific Prerequisites
+
+paqet requires `libpcap` development libraries on both the client and server machines.
+
+<Tabs>
+  <Tab title="Linux">
+    ### Linux Prerequisites
+    
+    **No prerequisites needed** - binaries are statically linked and include all necessary dependencies.
+    
+    Simply download the binary and make it executable:
+    
+    ```bash
+    chmod +x ./paqet_linux_amd64
+    ```
+    
+    <Note>
+      You will need root privileges to use raw sockets. Run paqet with `sudo`.
+    </Note>
+  </Tab>
+  
+  <Tab title="macOS">
+    ### macOS Prerequisites
+    
+    macOS comes with `libpcap` pre-installed as part of the Xcode Command Line Tools.
+    
+    If not already installed, install the Xcode Command Line Tools:
+    
+    ```bash
+    xcode-select --install
+    ```
+    
+    Make the binary executable:
+    
+    ```bash
+    chmod +x ./paqet_darwin_arm64
+    ```
+    
+    <Note>
+      You will need root privileges to use raw sockets. Run paqet with `sudo`.
+    </Note>
+  </Tab>
+  
+  <Tab title="Windows">
+    ### Windows Prerequisites
+    
+    Windows requires **Npcap** to be installed for packet capture functionality.
+    
+    <Steps>
+      <Step title="Download Npcap">
+        Download Npcap from the official website: [npcap.com](https://npcap.com/)
+      </Step>
+      
+      <Step title="Install Npcap">
+        Run the Npcap installer and follow the installation wizard.
+        
+        <Info>
+          Make sure to select the option to install in "WinPcap API-compatible mode" if prompted.
+        </Info>
+      </Step>
+      
+      <Step title="Verify Installation">
+        After installation, you can verify Npcap is installed by checking for the Npcap service in Windows Services.
+      </Step>
+    </Steps>
+    
+    <Warning>
+      You will need to run paqet with Administrator privileges on Windows.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Running paqet
+
+<Note>
+  paqet requires root/administrator privileges to use raw sockets.
+</Note>
+
+<Tabs>
+  <Tab title="Linux">
+    ```bash
+    sudo ./paqet_linux_amd64 run -c config.yaml
+    ```
+  </Tab>
+  
+  <Tab title="macOS">
+    ```bash
+    sudo ./paqet_darwin_arm64 run -c config.yaml
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    Open PowerShell or Command Prompt as Administrator:
+    
+    ```powershell
+    .\paqet_windows_amd64.exe run -c config.yaml
+    ```
+  </Tab>
+</Tabs>
+
+## Available Commands
+
+paqet is a multi-command application. The primary command is `run`, which starts the proxy, but several utility commands are included to help with configuration and debugging.
+
+The general syntax is:
+
+```bash
+sudo ./paqet <command> [arguments]
+```
+
+| Command   | Description                                                                      |
+| :-------- | :------------------------------------------------------------------------------- |
+| `run`     | Starts the paqet client or server proxy. This is the main operational command. |
+| `secret`  | Generates a new, cryptographically secure secret key.                            |
+| `ping`    | Sends a single test packet to the server to verify connectivity.                |
+| `dump`    | A diagnostic tool similar to `tcpdump` that captures and decodes packets.        |
+| `version` | Prints the application's version information.                                    |
+
+## Verifying Installation
+
+To verify that paqet is installed correctly, run:
+
+```bash
+sudo ./paqet version
+```
+
+This should display the version information for paqet.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with paqet in minutes
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/configuration/overview">
+    Learn how to configure paqet for your needs
+  </Card>
+</CardGroup>

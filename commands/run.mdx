@@ -1,0 +1,67 @@
+---
+title: "run"
+description: "Start paqet client or server from configuration file"
+---
+
+The `run` command is the primary command for starting paqet in either client or server mode based on your configuration file.
+
+## Syntax
+
+```bash
+paqet run [flags]
+```
+
+## Description
+
+The `run` command reads a YAML configuration file and starts paqet as either a client or server depending on the `role` specified in the config. It initializes the logging system, buffer pools, and starts the appropriate transport layer.
+
+## Flags
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--config` | `-c` | `config.yaml` | Path to the configuration file |
+
+## Usage Examples
+
+### Start with default config
+
+```bash
+sudo paqet run
+```
+
+### Start with custom config file
+
+```bash
+sudo paqet run -c /etc/paqet/server.yaml
+```
+
+### Start client
+
+```bash
+sudo paqet run -c client-config.yaml
+```
+
+### Start server
+
+```bash
+sudo paqet run -c server-config.yaml
+```
+
+<Warning>
+  **Root privileges required**: The `run` command requires sudo/root access because paqet uses raw sockets for packet manipulation. Raw sockets require elevated privileges on most operating systems.
+</Warning>
+
+<Note>
+  The configuration file determines whether paqet runs as a client or server based on the `role` field. See [Configuration](/configuration/overview) for details on setting up your config file.
+</Note>
+
+## What Happens When You Run
+
+1. **Configuration Loading**: The specified YAML file is loaded and validated
+2. **Initialization**: Log level and buffer pools are configured based on settings
+3. **Role Detection**: paqet checks the `role` field in the config
+4. **Startup**: Launches either client or server mode with the specified parameters
+
+<Info>
+  If the configuration file is invalid or the role is not specified correctly, paqet will exit with an error message.
+</Info>

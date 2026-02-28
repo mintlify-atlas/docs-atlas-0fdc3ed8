@@ -1,0 +1,335 @@
+---
+title: Firewall Configuration
+description: Critical iptables configuration to prevent kernel interference
+---
+
+Although paqet operates at the raw packet level using pcap, the operating system kernel can still interfere with connections by sending TCP RST (reset) packets. This guide explains why firewall configuration is required and how to set it up correctly.
+
+## Why Firewall Configuration is Required
+
+### The Kernel Interference Problem
+
+When paqet receives packets on its configured port, two things happen:
+
+1. **paqet receives a copy** via pcap directly from the network driver
+2. **The kernel also sees the packet** as it passes through the normal TCP/IP stack
+
+Since the kernel has no knowledge of the connection that paqet is managing, it sees these packets as belonging to a non-existent connection and generates TCP RST packets to reject them.
+
+These kernel-generated RST packets cause:
+- Corruption of connection state in NAT devices
+- Stateful firewall interference
+- Connection instability and packet drops
+- Premature connection termination
+
+### The Solution
+
+You must configure `iptables` to:
+1. **Bypass connection tracking** for the paqet port
+2. **Prevent RST packet generation** by the kernel
+
+This ensures that only paqet handles traffic on its port, and the kernel ignores it completely.
+
+<Warning>
+  Without these iptables rules, paqet **will not function properly**. The kernel will continuously interfere with packet handling.
+</Warning>
+
+## Port Selection Guidelines
+
+<Warning>
+  **Do not use standard ports** like 80, 443, 22, 25, or any other commonly used ports.
+
+  The iptables rules required by paqet can also affect **outgoing connections** from your server on those ports, potentially breaking normal server operations.
+</Warning>
+
+Recommended ports:
+- `9999` - Common choice for paqet
+- `8888` - Alternative high port
+- `7777` - Another high port option
+- Any non-standard port above 1024
+
+## Server Firewall Configuration
+
+<Steps>
+  <Step title="Set Your Port Number">
+    Replace `<PORT>` in all commands below with your actual server listen port (e.g., `9999`).
+
+    For convenience, set it as a variable:
+    ```bash
+    PORT=9999
+    ```
+  </Step>
+
+  <Step title="Bypass Connection Tracking">
+    These rules tell the kernel's netfilter to ignore packets on the paqet port for state tracking:
+
+    ```bash
+    sudo iptables -t raw -A PREROUTING -p tcp --dport $PORT -j NOTRACK
+    sudo iptables -t raw -A OUTPUT -p tcp --sport $PORT -j NOTRACK
+    ```
+
+    **What this does:**
+    - `-t raw` - Uses the raw table (processed before connection tracking)
+    - `PREROUTING` - Incoming packets
+    - `OUTPUT` - Outgoing packets
+    - `--dport` / `--sport` - Matches destination/source port
+    - `NOTRACK` - Disables connection tracking for these packets
+  </Step>
+
+  <Step title="Prevent RST Packet Generation">
+    This rule drops any RST packets the kernel tries to send from the paqet port:
+
+    ```bash
+    sudo iptables -t mangle -A OUTPUT -p tcp --sport $PORT --tcp-flags RST RST -j DROP
+    ```
+
+    **What this does:**
+    - `-t mangle` - Uses the mangle table for packet alteration
+    - `--tcp-flags RST RST` - Matches packets with RST flag set
+    - `DROP` - Discards the packet before it's sent
+  </Step>
+
+  <Step title="Alternative Rules (If Issues Persist)">
+    If you still experience connection issues, try these alternative accept rules:
+
+    ```bash
+    sudo iptables -t filter -A INPUT -p tcp --dport $PORT -j ACCEPT
+    sudo iptables -t filter -A OUTPUT -p tcp --sport $PORT -j ACCEPT
+    ```
+
+    These rules explicitly accept traffic on the paqet port, which can help in some firewall configurations.
+  </Step>
+
+  <Step title="Verify Rules">
+    Check that your rules were applied correctly:
+
+    ```bash
+    # View raw table rules
+    sudo iptables -t raw -L -n -v
+
+    # View mangle table rules
+    sudo iptables -t mangle -L -n -v
+
+    # View filter table rules (if using alternative rules)
+    sudo iptables -t filter -L -n -v
+    ```
+
+    Look for rules matching your port number.
+  </Step>
+
+  <Step title="Make Rules Persistent">
+    By default, iptables rules are lost when the system reboots. Make them persistent:
+
+    <Tabs>
+      <Tab title="Debian/Ubuntu">
+        Install iptables-persistent:
+        ```bash
+        sudo apt-get install iptables-persistent
+        ```
+
+        Save current rules:
+        ```bash
+        sudo iptables-save | sudo tee /etc/iptables/rules.v4
+        ```
+
+        Rules will be automatically restored on reboot.
+      </Tab>
+
+      <Tab title="RHEL/CentOS/Fedora">
+        Save current rules:
+        ```bash
+        sudo service iptables save
+        ```
+
+        Or manually:
+        ```bash
+        sudo iptables-save | sudo tee /etc/sysconfig/iptables
+        ```
+      </Tab>
+
+      <Tab title="Manual Persistence">
+        Save rules to a file:
+        ```bash
+        sudo iptables-save > /etc/iptables.rules
+        ```
+
+        Create a restore script at `/etc/network/if-pre-up.d/iptables`:
+        ```bash
+        #!/bin/sh
+        iptables-restore < /etc/iptables.rules
+        exit 0
+        ```
+
+        Make it executable:
+        ```bash
+        sudo chmod +x /etc/network/if-pre-up.d/iptables
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a complete script to configure iptables for paqet on port 9999:
+
+```bash
+#!/bin/bash
+
+# Set your paqet port
+PORT=9999
+
+echo "Configuring iptables for paqet on port $PORT..."
+
+# Bypass connection tracking
+echo "1. Bypassing connection tracking..."
+sudo iptables -t raw -A PREROUTING -p tcp --dport $PORT -j NOTRACK
+sudo iptables -t raw -A OUTPUT -p tcp --sport $PORT -j NOTRACK
+
+# Prevent RST packets
+echo "2. Preventing RST packet generation..."
+sudo iptables -t mangle -A OUTPUT -p tcp --sport $PORT --tcp-flags RST RST -j DROP
+
+echo "3. Verifying rules..."
+sudo iptables -t raw -L -n -v | grep $PORT
+sudo iptables -t mangle -L -n -v | grep $PORT
+
+echo "✓ iptables configuration complete!"
+echo ""
+echo "To make these rules persistent:"
+echo "  Debian/Ubuntu: sudo iptables-save | sudo tee /etc/iptables/rules.v4"
+echo "  RHEL/CentOS:   sudo service iptables save"
+```
+
+Save this as `configure-iptables.sh`, make it executable, and run:
+
+```bash
+chmod +x configure-iptables.sh
+sudo ./configure-iptables.sh
+```
+
+## Cloud Provider Firewalls
+
+In addition to iptables, cloud providers have their own firewall systems:
+
+<Tabs>
+  <Tab title="AWS">
+    **Security Groups:**
+
+    1. Go to EC2 → Security Groups
+    2. Select your instance's security group
+    3. Add an inbound rule:
+       - Type: Custom TCP
+       - Protocol: TCP
+       - Port Range: 9999 (your paqet port)
+       - Source: Your client IP or 0.0.0.0/0 for any source
+  </Tab>
+
+  <Tab title="Google Cloud">
+    **Firewall Rules:**
+
+    ```bash
+    gcloud compute firewall-rules create allow-paqet \
+      --allow tcp:9999 \
+      --source-ranges 0.0.0.0/0 \
+      --description "Allow paqet traffic"
+    ```
+
+    Or use the Console:
+    1. Go to VPC Network → Firewall
+    2. Create a new rule allowing TCP on port 9999
+  </Tab>
+
+  <Tab title="Azure">
+    **Network Security Groups:**
+
+    1. Go to Network Security Groups
+    2. Select your VM's NSG
+    3. Add an inbound security rule:
+       - Source: Any or specific IP
+       - Source port ranges: *
+       - Destination: Any
+       - Destination port ranges: 9999
+       - Protocol: TCP
+       - Action: Allow
+  </Tab>
+
+  <Tab title="DigitalOcean">
+    **Cloud Firewalls:**
+
+    1. Go to Networking → Firewalls
+    2. Create or edit a firewall
+    3. Add an inbound rule:
+       - Type: Custom
+       - Protocol: TCP
+       - Port Range: 9999
+       - Sources: All IPv4 or specific IPs
+  </Tab>
+</Tabs>
+
+## Removing Rules
+
+To remove paqet iptables rules:
+
+```bash
+PORT=9999
+
+# Remove raw table rules
+sudo iptables -t raw -D PREROUTING -p tcp --dport $PORT -j NOTRACK
+sudo iptables -t raw -D OUTPUT -p tcp --sport $PORT -j NOTRACK
+
+# Remove mangle table rules
+sudo iptables -t mangle -D OUTPUT -p tcp --sport $PORT --tcp-flags RST RST -j DROP
+
+# If you added filter rules, remove them too
+sudo iptables -t filter -D INPUT -p tcp --dport $PORT -j ACCEPT
+sudo iptables -t filter -D OUTPUT -p tcp --sport $PORT -j ACCEPT
+```
+
+## Troubleshooting
+
+### Connection Times Out
+
+1. **Verify iptables rules are applied:**
+   ```bash
+   sudo iptables -t raw -L -n -v
+   sudo iptables -t mangle -L -n -v
+   ```
+
+2. **Check for conflicting rules:**
+   ```bash
+   sudo iptables -L -n -v
+   ```
+   Look for DROP or REJECT rules that might block your port.
+
+3. **Verify cloud provider firewall:**
+   Ensure your security group/firewall allows TCP traffic on your port.
+
+### Rules Not Persisting
+
+1. **Check if iptables-persistent is installed:**
+   ```bash
+   dpkg -l | grep iptables-persistent  # Debian/Ubuntu
+   systemctl status iptables           # RHEL/CentOS
+   ```
+
+2. **Manually verify saved rules:**
+   ```bash
+   cat /etc/iptables/rules.v4          # Debian/Ubuntu
+   cat /etc/sysconfig/iptables         # RHEL/CentOS
+   ```
+
+### Server Can't Make Outbound Connections
+
+This happens if you used a standard port like 80 or 443:
+
+1. **Change your paqet port** to a non-standard port (e.g., 9999)
+2. **Remove old iptables rules** for the standard port
+3. **Re-apply rules** with the new port
+4. **Update your configuration files** (both client and server)
+
+## Next Steps
+
+- [Configure the client](/guides/client-setup)
+- [Configure the server](/guides/server-setup)
+- [Learn about network configuration](/guides/network-configuration)

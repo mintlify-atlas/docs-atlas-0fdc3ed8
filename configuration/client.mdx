@@ -1,0 +1,292 @@
+---
+title: 'Client Configuration'
+description: 'Complete reference for paqet client configuration options'
+---
+
+The client configuration file defines how paqet operates in client mode, including SOCKS5 proxy settings, port forwarding, network interface configuration, and server connection details.
+
+## Role Configuration
+
+<ParamField path="role" type="string" required>
+  Must be set to `"client"` for client mode.
+</ParamField>
+
+## Logging
+
+<ParamField path="log.level" type="string" default="info">
+  Log level for output. Options: `none`, `debug`, `info`, `warn`, `error`, `fatal`
+</ParamField>
+
+## SOCKS5 Proxy Configuration
+
+The `socks5` section defines SOCKS5 proxy servers that the client will expose. You can configure multiple SOCKS5 listeners.
+
+<ParamField path="socks5" type="array">
+  Array of SOCKS5 proxy configurations
+</ParamField>
+
+<ParamField path="socks5[].listen" type="string" required>
+  Local address and port to listen for SOCKS5 connections (e.g., `"127.0.0.1:1080"`)
+</ParamField>
+
+<ParamField path="socks5[].username" type="string">
+  Optional username for SOCKS5 authentication
+</ParamField>
+
+<ParamField path="socks5[].password" type="string">
+  Optional password for SOCKS5 authentication
+</ParamField>
+
+## Port Forwarding Configuration
+
+The `forward` section defines port forwarding rules. This can be used alongside or instead of SOCKS5.
+
+<ParamField path="forward" type="array">
+  Array of port forwarding configurations
+</ParamField>
+
+<ParamField path="forward[].listen" type="string" required>
+  Local address and port to listen on (e.g., `"127.0.0.1:8080"`)
+</ParamField>
+
+<ParamField path="forward[].target" type="string" required>
+  Target address and port to forward to via the server (e.g., `"127.0.0.1:80"`)
+</ParamField>
+
+<ParamField path="forward[].protocol" type="string" default="tcp">
+  Protocol to use. Options: `tcp`, `udp`
+</ParamField>
+
+## Network Interface Settings
+
+<ParamField path="network.interface" type="string" required>
+  Network interface name to use (e.g., `en0`, `eth0`, `wlan0`)
+</ParamField>
+
+<ParamField path="network.guid" type="string">
+  Windows only: Npcap device GUID in format `\\Device\\NPF_{...}`
+</ParamField>
+
+### IPv4 Configuration
+
+<ParamField path="network.ipv4.addr" type="string" required>
+  Local IPv4 address and port (e.g., `"192.168.1.100:0"`). Use port `0` for random port assignment.
+</ParamField>
+
+<ParamField path="network.ipv4.router_mac" type="string" required>
+  MAC address of the gateway/router in format `aa:bb:cc:dd:ee:ff`
+</ParamField>
+
+### IPv6 Configuration
+
+<ParamField path="network.ipv6.addr" type="string">
+  Local IPv6 address and port (e.g., `"[2001:db8::1]:0"`). Optional.
+</ParamField>
+
+<ParamField path="network.ipv6.router_mac" type="string">
+  MAC address of the gateway/router for IPv6
+</ParamField>
+
+### TCP Configuration
+
+<ParamField path="network.tcp.local_flag" type="array" default='["PA"]'>
+  TCP flags for local packets (Push+Ack by default)
+</ParamField>
+
+<ParamField path="network.tcp.remote_flag" type="array" default='["PA"]'>
+  TCP flags for remote packets (Push+Ack by default)
+</ParamField>
+
+### PCAP Settings
+
+<ParamField path="network.pcap.sockbuf" type="integer" default="4194304">
+  PCAP socket buffer size in bytes (default: 4MB for client)
+</ParamField>
+
+## Server Connection Settings
+
+<ParamField path="server.addr" type="string" required>
+  Address and port of the paqet server to connect to (e.g., `"10.0.0.100:9999"`)
+</ParamField>
+
+## Transport Configuration
+
+<ParamField path="transport.protocol" type="string" default="kcp">
+  Transport protocol to use. Currently only `"kcp"` is supported.
+</ParamField>
+
+<ParamField path="transport.conn" type="integer" default="1">
+  Number of parallel connections (1-256). Must be 1 if client port is explicitly set (non-zero).
+</ParamField>
+
+<ParamField path="transport.tcpbuf" type="integer" default="8192">
+  TCP buffer size in bytes
+</ParamField>
+
+<ParamField path="transport.udpbuf" type="integer" default="4096">
+  UDP buffer size in bytes
+</ParamField>
+
+### KCP Settings
+
+See [Transport Configuration](/configuration/transport) for detailed KCP protocol settings.
+
+<ParamField path="transport.kcp.mode" type="string" default="fast">
+  KCP mode preset. Options: `normal`, `fast`, `fast2`, `fast3`, `manual`
+</ParamField>
+
+<ParamField path="transport.kcp.mtu" type="integer" default="1350">
+  Maximum transmission unit in bytes (50-1500)
+</ParamField>
+
+<ParamField path="transport.kcp.rcvwnd" type="integer" default="512">
+  Receive window size for client
+</ParamField>
+
+<ParamField path="transport.kcp.sndwnd" type="integer" default="512">
+  Send window size for client
+</ParamField>
+
+<ParamField path="transport.kcp.key" type="string" required>
+  Encryption key (must match server). Generate using `paqet secret`.
+</ParamField>
+
+<ParamField path="transport.kcp.block" type="string" default="aes">
+  Encryption algorithm. See [Encryption Configuration](/configuration/encryption).
+</ParamField>
+
+<ParamField path="transport.kcp.smuxbuf" type="integer" default="4194304">
+  SMUX buffer size in bytes (4MB)
+</ParamField>
+
+<ParamField path="transport.kcp.streambuf" type="integer" default="2097152">
+  Stream buffer size in bytes (2MB)
+</ParamField>
+
+<ParamField path="transport.kcp.smuxkalive" type="integer" default="2">
+  SMUX keepalive interval in seconds
+</ParamField>
+
+<ParamField path="transport.kcp.smuxktimeout" type="integer" default="8">
+  SMUX keepalive timeout in seconds
+</ParamField>
+
+## Complete Example
+
+```yaml
+# paqet Client Configuration Example
+# Role must be explicitly set
+role: "client"
+
+# Logging configuration
+log:
+  level: "info"  # none, debug, info, warn, error, fatal
+
+# SOCKS5 proxy configuration (client mode)
+socks5:
+  - listen: "127.0.0.1:1080"    # SOCKS5 proxy listen address
+    username: ""                # Optional SOCKS5 authentication
+    password: ""                # Optional SOCKS5 authentication
+
+# Port forwarding configuration (can be used alongside SOCKS5)
+# forward:
+#   - listen: "127.0.0.1:8080"  # Local port to listen on
+#     target: "127.0.0.1:80"    # Target to forward to (via server)
+#     protocol: "tcp"           # Protocol (tcp/udp)
+
+# Network interface settings
+network:
+  interface: "en0"                          # CHANGE ME: Network interface (en0, eth0, wlan0, etc.)
+  # guid: "\\Device\\NPF_{...}"               # Windows only (Npcap).
+
+  # IPv4 configuration
+  ipv4:
+    addr: "192.168.1.100:0"                 # CHANGE ME: Local IP (use port 0 for random port)
+    router_mac: "aa:bb:cc:dd:ee:ff"         # CHANGE ME: Gateway/router MAC address
+
+  # IPv6 configuration (optional)
+  ipv6:
+    addr: "[2001:db8::1]:0"                 # CHANGE ME: Local IPv6 address and port (optional)
+    router_mac: "aa:bb:cc:dd:ee:ff"         # CHANGE ME: Gateway/router MAC address for IPv6
+
+  tcp:
+    local_flag: ["PA"]                      # Local TCP flags (Push+Ack default)
+    remote_flag: ["PA"]                     # Remote TCP flags (Push+Ack default)
+
+  # PCAP settings (optional - will use defaults)
+  # pcap:
+    # sockbuf: 4194304                        # 4MB buffer (default for client)
+
+# Server connection settings
+server:
+  addr: "10.0.0.100:9999"  # CHANGE ME: paqet server address and port
+
+# Transport protocol configuration
+transport:
+  protocol: "kcp"  # Transport protocol (currently only "kcp" supported)
+  conn: 1          # Number of connections (1-256, default: 1)
+  
+  # tcpbuf: 8192   # TCP buffer size in bytes
+  # udpbuf: 4096   # UDP buffer size in bytes
+
+  # KCP protocol settings
+  kcp:
+    mode: "fast"              # KCP mode: normal, fast, fast2, fast3, manual
+
+    # Manual mode parameters (only used when mode="manual")
+    # nodelay: 1              # 0=disable, 1=enable
+                              # Enable for lower latency & aggressive retransmission
+                              # Disable for TCP-like conservative behavior
+                  
+    # interval: 10            # Internal update timer interval in milliseconds (10-5000ms)
+                              # Lower values increase responsiveness but raise CPU usage
+
+    # resend: 2               # Fast retransmit trigger (0-2)
+                              # 0 = disabled (wait for timeout only)
+                              # 1 = most aggressive (retransmit after 1 ACK skip)
+                              # 2 = aggressive (retransmit after 2 ACK skips)
+
+    # nocongestion: 1         # Congestion control: 0=enabled, 1=disabled
+                              # 0 = TCP-like fair congestion control (slow start, congestion avoidance)
+                              # 1 = disable congestion control for maximum speed
+
+    # wdelay: false           # Write batching behavior
+                              # false = flush immediately (low latency, recommended for real-time)
+                              # true = batch writes until next update interval (higher throughput)
+                              # Controls when data is actually sent to the network
+
+    # acknodelay: true        # ACK sending behavior
+                              # true = send ACKs immediately when packets are received (lower latency)
+                              # false = batch ACKs (more bandwidth efficient)
+                              # Setting true reduces latency but increases bandwidth usage
+
+    # mtu: 1350              # Maximum transmission unit (50-1500)
+    # rcvwnd: 512            # Receive window size (default for client)  
+    # sndwnd: 512            # Send window size (default for client)
+
+    # Encryption settings
+    # block: "aes"                    # Encryption: aes, aes-128, aes-128-gcm, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, sm4, none, null.
+    key: "your-secret-key-here"       # CHANGE ME: Secret key (must match server)
+
+    # Buffer settings (optional)
+    # smuxbuf: 4194304       # 4MB SMUX buffer
+    # streambuf: 2097152     # 2MB stream buffer
+    
+    # smuxkalive: 2       # SMUX keepalive interval (seconds)
+    # smuxktimeout: 8     # SMUX keepalive timeout (seconds)
+
+# Optional Forward Error Correction (FEC) - currently disabled
+# Use these only if you need FEC for very lossy networks:
+#   dshard: 10    # Data shards for FEC
+#   pshard: 3     # Parity shards for FEC
+```
+
+<Note>
+Parameters marked with `# CHANGE ME:` must be customized for your environment.
+</Note>
+
+## See Also
+
+- [Server Configuration](/configuration/server)
+- [Transport Configuration](/configuration/transport)
+- [Encryption Configuration](/configuration/encryption)

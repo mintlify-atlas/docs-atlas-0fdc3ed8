@@ -1,0 +1,261 @@
+---
+title: 'Server Configuration'
+description: 'Complete reference for paqet server configuration options'
+---
+
+The server configuration file defines how paqet operates in server mode, including listen address, network interface configuration, and transport settings.
+
+## Role Configuration
+
+<ParamField path="role" type="string" required>
+  Must be set to `"server"` for server mode.
+</ParamField>
+
+## Logging
+
+<ParamField path="log.level" type="string" default="info">
+  Log level for output. Options: `none`, `debug`, `info`, `warn`, `error`, `fatal`
+</ParamField>
+
+## Server Listen Configuration
+
+<ParamField path="listen.addr" type="string" required>
+  Server listen address and port (e.g., `":9999"`). The port must match the port configured in `network.ipv4.addr` and/or `network.ipv6.addr`.
+</ParamField>
+
+<Warning>
+Do not use standard ports (80, 443, etc.) as iptables rules can affect outgoing server connections. Choose a high port number like 9999.
+</Warning>
+
+## Network Interface Settings
+
+<ParamField path="network.interface" type="string" required>
+  Network interface name to use (e.g., `eth0`, `ens3`, `en0`)
+</ParamField>
+
+<ParamField path="network.guid" type="string">
+  Windows only: Npcap device GUID in format `\\Device\\NPF_{...}`
+</ParamField>
+
+### IPv4 Configuration
+
+<ParamField path="network.ipv4.addr" type="string" required>
+  Server IPv4 address and port (e.g., `"10.0.0.100:9999"`). The port must match `listen.addr`.
+</ParamField>
+
+<ParamField path="network.ipv4.router_mac" type="string" required>
+  MAC address of the gateway/router in format `aa:bb:cc:dd:ee:ff`
+</ParamField>
+
+### IPv6 Configuration
+
+<ParamField path="network.ipv6.addr" type="string">
+  Server IPv6 address and port (e.g., `"[::1]:9999"`). Optional. If configured, port must match `listen.addr`.
+</ParamField>
+
+<ParamField path="network.ipv6.router_mac" type="string">
+  MAC address of the gateway/router for IPv6
+</ParamField>
+
+### TCP Configuration
+
+<ParamField path="network.tcp.local_flag" type="array" default='["PA"]'>
+  TCP flags for local packets (Push+Ack by default)
+</ParamField>
+
+### PCAP Settings
+
+<ParamField path="network.pcap.sockbuf" type="integer" default="8388608">
+  PCAP socket buffer size in bytes (default: 8MB for server)
+</ParamField>
+
+## Transport Configuration
+
+<ParamField path="transport.protocol" type="string" default="kcp">
+  Transport protocol to use. Currently only `"kcp"` is supported.
+</ParamField>
+
+<ParamField path="transport.conn" type="integer" default="1">
+  Number of parallel connections (1-256)
+</ParamField>
+
+<ParamField path="transport.tcpbuf" type="integer" default="8192">
+  TCP buffer size in bytes
+</ParamField>
+
+<ParamField path="transport.udpbuf" type="integer" default="4096">
+  UDP buffer size in bytes
+</ParamField>
+
+### KCP Settings
+
+See [Transport Configuration](/configuration/transport) for detailed KCP protocol settings.
+
+<ParamField path="transport.kcp.mode" type="string" default="fast">
+  KCP mode preset. Options: `normal`, `fast`, `fast2`, `fast3`, `manual`
+</ParamField>
+
+<ParamField path="transport.kcp.mtu" type="integer" default="1350">
+  Maximum transmission unit in bytes (50-1500)
+</ParamField>
+
+<ParamField path="transport.kcp.rcvwnd" type="integer" default="1024">
+  Receive window size for server
+</ParamField>
+
+<ParamField path="transport.kcp.sndwnd" type="integer" default="1024">
+  Send window size for server
+</ParamField>
+
+<ParamField path="transport.kcp.key" type="string" required>
+  Encryption key (must match client). Generate using `paqet secret`.
+</ParamField>
+
+<ParamField path="transport.kcp.block" type="string" default="aes">
+  Encryption algorithm. See [Encryption Configuration](/configuration/encryption).
+</ParamField>
+
+<ParamField path="transport.kcp.smuxbuf" type="integer" default="4194304">
+  SMUX buffer size in bytes (4MB)
+</ParamField>
+
+<ParamField path="transport.kcp.streambuf" type="integer" default="2097152">
+  Stream buffer size in bytes (2MB)
+</ParamField>
+
+<ParamField path="transport.kcp.smuxkalive" type="integer" default="2">
+  SMUX keepalive interval in seconds
+</ParamField>
+
+<ParamField path="transport.kcp.smuxktimeout" type="integer" default="8">
+  SMUX keepalive timeout in seconds
+</ParamField>
+
+## Firewall Configuration
+
+<Warning>
+Since paqet uses pcap to bypass standard firewalls, you **must** configure iptables on the server to prevent kernel interference.
+</Warning>
+
+Run these commands on your server (replace `9999` with your actual listen port):
+
+```bash
+sudo iptables -t raw -A PREROUTING -p tcp --dport 9999 -j NOTRACK
+sudo iptables -t raw -A OUTPUT -p tcp --sport 9999 -j NOTRACK  
+sudo iptables -t mangle -A OUTPUT -p tcp --sport 9999 --tcp-flags RST RST -j DROP
+```
+
+These rules:
+1. Disable connection tracking for incoming connections on the paqet port
+2. Disable connection tracking for outgoing connections from the paqet port
+3. Drop RST packets from the kernel for this port
+
+## Complete Example
+
+```yaml
+# paqet Server Configuration Example  
+# Role must be explicitly set
+role: "server"
+
+# Logging configuration
+log:
+  level: "info"  # none, debug, info, warn, error, fatal
+
+# Server listen configuration
+listen:
+  addr: ":9999"   # CHANGE ME: Server listen port (must match network.ipv4.addr port)
+                  # WARNING: Do not use standard ports (80, 443, etc.) as iptables rules
+                  # can affect outgoing server connections.
+
+# Network interface settings
+network:
+  interface: "eth0"                          # CHANGE ME: Network interface (eth0, ens3, en0, etc.)
+  # guid: "\\Device\\NPF_{...}"                # Windows only (Npcap).
+
+  # IPv4 configuration
+  ipv4:
+    addr: "10.0.0.100:9999"                  # CHANGE ME: Server IPv4 and port (port must match listen.addr)
+    router_mac: "aa:bb:cc:dd:ee:ff"          # CHANGE ME: Gateway/router MAC address
+
+  # IPv6 configuration (optional)
+  ipv6:
+    addr: "[::1]:9999"                       # CHANGE ME: Server IPv6 and port (or remove if not using IPv6)
+    router_mac: "aa:bb:cc:dd:ee:ff"          # CHANGE ME: Gateway/router MAC address
+
+  # TCP flags for packet crafting (optional - will use defaults)
+  tcp:
+    local_flag: ["PA"]                       # Local TCP flags (Push+Ack default)
+
+  # PCAP settings (optional - will use defaults)
+  # pcap:
+    # sockbuf: 8388608                         # 8MB buffer (default for server)
+
+# Transport protocol configuration
+transport:
+  protocol: "kcp"  # Transport protocol (currently only "kcp" supported)
+  conn: 1          # Number of connections (1-256, default: 1)
+  
+  # tcpbuf: 8192   # TCP buffer size in bytes
+  # udpbuf: 4096   # UDP buffer size in bytes
+
+  # KCP protocol settings
+  kcp:
+    mode: "fast"              # KCP mode: normal, fast, fast2, fast3, manual
+
+    # Manual mode parameters (only used when mode="manual")
+    # nodelay: 1              # 0=disable, 1=enable
+                              # Enable for lower latency & aggressive retransmission
+                              # Disable for TCP-like conservative behavior
+                  
+    # interval: 10            # Internal update timer interval in milliseconds (10-5000ms)
+                              # Lower values increase responsiveness but raise CPU usage
+
+    # resend: 2               # Fast retransmit trigger (0-2)
+                              # 0 = disabled (wait for timeout only)
+                              # 1 = most aggressive (retransmit after 1 ACK skip)
+                              # 2 = aggressive (retransmit after 2 ACK skips)
+
+    # nocongestion: 1         # Congestion control: 0=enabled, 1=disabled
+                              # 0 = TCP-like fair congestion control (slow start, congestion avoidance)
+                              # 1 = disable congestion control for maximum speed
+
+    # wdelay: false           # Write batching behavior
+                              # false = flush immediately (low latency, recommended for real-time)
+                              # true = batch writes until next update interval (higher throughput)
+                              # Controls when data is actually sent to the network
+
+    # acknodelay: true        # ACK sending behavior
+                              # true = send ACKs immediately when packets are received (lower latency)
+                              # false = batch ACKs (more bandwidth efficient)
+                              # Setting true reduces latency but increases bandwidth usage
+
+    # mtu: 1350              # Maximum transmission unit (50-1500)
+    # rcvwnd: 1024           # Receive window size (default for server)
+    # sndwnd: 1024           # Send window size (default for server)
+
+    # Encryption settings  
+    # block: "aes"                    # Encryption: aes, aes-128, aes-128-gcm, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, sm4, none, null.
+    key: "your-secret-key-here"       # CHANGE ME: Secret key (must match client)
+
+    # Buffer settings (optional)
+    # smuxbuf: 4194304       # 4MB SMUX buffer
+    # streambuf: 2097152     # 2MB stream buffer
+
+    # smuxkalive: 2       # SMUX keepalive interval (seconds)
+    # smuxktimeout: 8     # SMUX keepalive timeout (seconds)
+
+# Optional Forward Error Correction (FEC) - currently disabled
+# Use these only if you need FEC for very lossy networks:
+#   dshard: 10    # Data shards for FEC  
+#   pshard: 3     # Parity shards for FEC
+```
+
+<Note>
+Parameters marked with `# CHANGE ME:` must be customized for your environment.
+</Note>
+
+## See Also
+
+- [Client Configuration](/configuration/client)
+- [Transport Configuration](/configuration/transport)
+- [Encryption Configuration](/configuration/encryption)

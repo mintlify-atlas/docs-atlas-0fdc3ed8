@@ -1,0 +1,213 @@
+---
+title: SOCKS5 Proxy Mode
+description: Use paqet as a SOCKS5 proxy for dynamic application-level forwarding
+---
+
+## Overview
+
+SOCKS5 proxy mode allows paqet to act as a local SOCKS5 proxy server that dynamically forwards connections from your applications to any destination through the encrypted raw packet tunnel. This is the most flexible mode, as it doesn't require pre-configuring specific target addresses.
+
+## How SOCKS5 Mode Works
+
+When running in SOCKS5 mode, paqet creates a local proxy server that applications can connect to:
+
+```
+[Your App] <------> [paqet Client] <===== Raw TCP Packet =====> [paqet Server] <------> [Target Server]
+(e.g. curl)        (localhost:1080)        (Internet)          (Public IP:PORT)     (e.g. httpbin.org)
+```
+
+1. Your application connects to the local SOCKS5 proxy (e.g., `127.0.0.1:1080`)
+2. The application sends the target destination to the proxy
+3. paqet client encrypts and forwards the traffic over raw packets to the server
+4. paqet server establishes the connection to the actual destination
+5. All traffic flows through the encrypted tunnel
+
+## Configuration
+
+### Basic SOCKS5 Setup
+
+Add the `socks5` section to your client configuration:
+
+```yaml
+# Role must be explicitly set
+role: "client"
+
+# SOCKS5 proxy configuration
+socks5:
+  - listen: "127.0.0.1:1080"    # SOCKS5 proxy listen address
+```
+
+### With Authentication
+
+You can optionally enable username/password authentication to restrict access to your local SOCKS5 proxy:
+
+```yaml
+socks5:
+  - listen: "127.0.0.1:1080"
+    username: "myuser"           # Optional SOCKS5 authentication
+    password: "mypassword"       # Optional SOCKS5 authentication
+```
+
+<Note>
+SOCKS5 authentication only protects access to your **local** proxy. It does not affect the encryption or authentication of the tunnel between client and server (which uses the KCP key).
+</Note>
+
+### Multiple SOCKS5 Listeners
+
+You can configure multiple SOCKS5 proxy listeners on different ports:
+
+```yaml
+socks5:
+  - listen: "127.0.0.1:1080"
+    username: "user1"
+    password: "pass1"
+  - listen: "127.0.0.1:1081"
+    username: "user2"
+    password: "pass2"
+```
+
+### Complete Client Configuration Example
+
+```yaml
+role: "client"
+
+log:
+  level: "info"
+
+socks5:
+  - listen: "127.0.0.1:1080"
+    username: ""
+    password: ""
+
+network:
+  interface: "en0"
+  ipv4:
+    addr: "192.168.1.100:0"
+    router_mac: "aa:bb:cc:dd:ee:ff"
+
+server:
+  addr: "10.0.0.100:9999"
+
+transport:
+  protocol: "kcp"
+  kcp:
+    block: "aes"
+    key: "your-secret-key-here"
+```
+
+## Using SOCKS5 with Applications
+
+### Command-Line Tools
+
+Most command-line tools support SOCKS5 proxies:
+
+#### curl
+
+```bash
+# Use socks5h to resolve DNS through the proxy
+curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+
+# With authentication
+curl -v https://httpbin.org/ip --proxy socks5h://myuser:mypassword@127.0.0.1:1080
+```
+
+<Info>
+Use `socks5h://` instead of `socks5://` to ensure DNS queries are also sent through the proxy. This prevents DNS leaks.
+</Info>
+
+#### wget
+
+```bash
+export http_proxy=socks5h://127.0.0.1:1080
+export https_proxy=socks5h://127.0.0.1:1080
+wget https://httpbin.org/ip
+```
+
+#### git
+
+```bash
+# For a single command
+git clone https://github.com/user/repo.git --config "http.proxy=socks5h://127.0.0.1:1080"
+
+# Set globally
+git config --global http.proxy socks5h://127.0.0.1:1080
+git config --global https.proxy socks5h://127.0.0.1:1080
+```
+
+### Browsers
+
+Most browsers allow configuring SOCKS5 proxies in their network settings:
+
+- **Firefox**: Settings → Network Settings → Manual proxy configuration
+- **Chrome/Edge**: Use system proxy settings or launch with `--proxy-server=socks5://127.0.0.1:1080`
+
+### System-Wide Proxy
+
+You can configure your entire system to use the SOCKS5 proxy:
+
+**macOS**: System Settings → Network → Advanced → Proxies → SOCKS Proxy
+
+**Linux**: Depends on desktop environment (GNOME/KDE network settings)
+
+**Windows**: Settings → Network & Internet → Proxy → Manual proxy setup
+
+## Dynamic Forwarding
+
+SOCKS5 provides **dynamic forwarding**, meaning:
+
+- No need to specify target addresses in advance
+- Each application connection can go to a different destination
+- The destination is determined at connection time by the application
+- Ideal for browsing, general-purpose proxying, or when targets change frequently
+
+This is in contrast to **port forwarding** mode, where you must pre-configure specific local→remote port mappings.
+
+## Combining SOCKS5 with Port Forwarding
+
+You can run both SOCKS5 and port forwarding simultaneously:
+
+```yaml
+socks5:
+  - listen: "127.0.0.1:1080"
+
+forward:
+  - listen: "127.0.0.1:8080"
+    target: "127.0.0.1:80"
+    protocol: "tcp"
+```
+
+This allows you to use:
+- SOCKS5 for dynamic application proxying
+- Port forwarding for specific services that need dedicated ports
+
+## Verification
+
+To verify your SOCKS5 proxy is working correctly:
+
+<Steps>
+  <Step title="Check your current IP">
+    First, check your current public IP without the proxy:
+    ```bash
+    curl https://httpbin.org/ip
+    ```
+  </Step>
+
+  <Step title="Test through the proxy">
+    Now test through the SOCKS5 proxy:
+    ```bash
+    curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+    ```
+  </Step>
+
+  <Step title="Verify the IP changed">
+    The output should show your **server's** public IP address, not your client's IP. This confirms traffic is flowing through the paqet tunnel.
+  </Step>
+</Steps>
+
+<Warning>
+If the IP address doesn't change, check that:
+- Both client and server are running
+- The KCP key matches on both sides
+- Server iptables rules are configured correctly
+- Network configuration (IPs, MACs, interfaces) is correct
+</Warning>

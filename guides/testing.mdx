@@ -1,0 +1,352 @@
+---
+title: Testing Connectivity
+description: Tools and techniques for testing and verifying paqet connections
+---
+
+## Overview
+
+paqet includes built-in testing tools to verify connectivity, debug issues, and monitor traffic. These tools help you confirm your configuration is correct before routing production traffic through the tunnel.
+
+## Testing Commands
+
+paqet provides two primary testing utilities:
+
+- **`paqet ping`** - Send test packets to verify basic connectivity
+- **`paqet dump`** - Capture and decode packets for debugging
+
+## Using paqet ping
+
+The `ping` command sends a single test packet to the server to verify connectivity.
+
+### Basic Usage
+
+<Steps>
+  <Step title="Start the server">
+    Ensure your paqet server is running:
+    ```bash
+    sudo ./paqet_linux_amd64 run -c server-config.yaml
+    ```
+  </Step>
+
+  <Step title="Run ping from client">
+    Test connectivity using your client configuration:
+    ```bash
+    sudo ./paqet_darwin_arm64 ping -c client-config.yaml
+    ```
+  </Step>
+
+  <Step title="Check the output">
+    Successful ping output indicates:
+    - Network configuration is correct
+    - Packets are reaching the server
+    - KCP encryption/decryption is working
+    - Transport layer is functioning
+  </Step>
+</Steps>
+
+<Note>
+The `ping` command requires root privileges (`sudo`) because it uses raw sockets, just like the main `run` command.
+</Note>
+
+### What Ping Tests
+
+When you run `paqet ping`, it verifies:
+
+1. **Network interface** - Can capture and inject packets on the configured interface
+2. **Packet routing** - Packets reach the correct destination IP and port
+3. **KCP transport** - Encryption key is correct and handshake succeeds
+4. **Raw socket operation** - Low-level packet crafting and injection works
+5. **MAC addresses** - Gateway MAC configuration is correct
+
+## Using paqet dump
+
+The `dump` command captures and decodes packets, similar to `tcpdump`, but specifically for paqet traffic.
+
+### Basic Usage
+
+<Steps>
+  <Step title="Start packet capture on server">
+    Monitor incoming packets on the server port:
+    ```bash
+    sudo ./paqet_linux_amd64 dump -p 9999
+    ```
+    This will show all raw TCP packets arriving on port 9999.
+  </Step>
+
+  <Step title="Generate traffic from client">
+    In another terminal, start the client or send a ping:
+    ```bash
+    sudo ./paqet_darwin_arm64 ping -c client-config.yaml
+    ```
+  </Step>
+
+  <Step title="Analyze captured packets">
+    The dump output shows:
+    - Source and destination IPs/ports
+    - TCP flags
+    - Packet payload (encrypted KCP data)
+    - Timestamps
+  </Step>
+</Steps>
+
+### Dump Command Options
+
+```bash
+# Capture on specific port
+sudo ./paqet dump -p 9999
+
+# Capture on specific interface
+sudo ./paqet dump -i eth0 -p 9999
+
+# More verbose output
+sudo ./paqet dump -p 9999 -v
+```
+
+<Info>
+Use `dump` when you need to verify that packets are physically arriving at the server, even if the application isn't processing them correctly.
+</Info>
+
+## Testing SOCKS5 Proxy
+
+Once basic connectivity is verified, test the SOCKS5 proxy with real applications.
+
+### Testing with curl
+
+<Steps>
+  <Step title="Start client and server">
+    Ensure both are running with SOCKS5 configured:
+    ```yaml
+    socks5:
+      - listen: "127.0.0.1:1080"
+    ```
+  </Step>
+
+  <Step title="Test with curl">
+    Use curl to make a request through the proxy:
+    ```bash
+    curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+    ```
+  </Step>
+
+  <Step title="Verify the response">
+    A successful response should:
+    - Show your **server's** public IP, not your client's IP
+    - Complete without connection errors
+    - Return valid JSON data
+    ```json
+    {
+      "origin": "10.0.0.100"  // Your server's IP
+    }
+    ```
+  </Step>
+</Steps>
+
+### Testing with Authentication
+
+If you've configured SOCKS5 authentication:
+
+```bash
+# With username and password
+curl -v https://httpbin.org/ip --proxy socks5h://myuser:mypassword@127.0.0.1:1080
+```
+
+<Warning>
+If you get authentication errors, verify:
+- Username and password are correctly configured in `config.yaml`
+- No extra whitespace in the credentials
+- Password doesn't contain special characters that need URL encoding
+</Warning>
+
+## Testing Port Forwarding
+
+Verify port forwarding configuration:
+
+<Steps>
+  <Step title="Configure a port forward">
+    Add to your client config:
+    ```yaml
+    forward:
+      - listen: "127.0.0.1:8080"
+        target: "127.0.0.1:80"
+        protocol: "tcp"
+    ```
+  </Step>
+
+  <Step title="Start the services">
+    Start both client and server with the configuration.
+  </Step>
+
+  <Step title="Test the forwarded port">
+    Connect to the local forwarded port:
+    ```bash
+    # For HTTP services
+    curl http://localhost:8080
+
+    # For TCP connectivity test
+    nc -zv localhost 8080
+    ```
+  </Step>
+
+  <Step title="Verify in logs">
+    Check client logs for forwarding activity:
+    ```
+    INFO starting tcp forwarder: 127.0.0.1:8080 -> 127.0.0.1:80
+    DEBUG TCP forwarder accepted connection from 127.0.0.1:xxxxx
+    ```
+  </Step>
+</Steps>
+
+## What to Look For in Successful Connections
+
+### Client Logs
+
+Successful client connection shows:
+
+```
+INFO starting paqet client
+INFO interface: en0, IPv4: 192.168.1.100:0
+INFO connecting to server: 10.0.0.100:9999
+INFO SOCKS5 server listening on 127.0.0.1:1080
+INFO client started successfully
+```
+
+### Server Logs
+
+Successful server connection shows:
+
+```
+INFO starting paqet server
+INFO interface: eth0, IPv4: 10.0.0.100:9999
+INFO server listening on :9999
+INFO client connected from 192.168.1.100:xxxxx
+INFO server started successfully
+```
+
+### Application Connection
+
+Successful application-level connection:
+
+```bash
+$ curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+* Trying 127.0.0.1:1080...
+* Connected to 127.0.0.1 (127.0.0.1) port 1080 (#0)
+* SOCKS5 connect to httpbin.org:443 (locally resolved)
+* Connected to httpbin.org via SOCKS5 proxy
+...
+{
+  "origin": "10.0.0.100"
+}
+```
+
+<Info>
+The key indicator is `"origin"` showing your **server's** IP address, not your client's. This confirms traffic is flowing through the tunnel.
+</Info>
+
+## Common Test Scenarios
+
+### Scenario 1: Fresh Installation
+
+<Steps>
+  <Step title="Run ping test">
+    ```bash
+    sudo ./paqet ping -c config.yaml
+    ```
+    Verifies basic connectivity and configuration.
+  </Step>
+
+  <Step title="Start full client/server">
+    ```bash
+    # Server
+    sudo ./paqet run -c server-config.yaml
+
+    # Client
+    sudo ./paqet run -c client-config.yaml
+    ```
+  </Step>
+
+  <Step title="Test with curl">
+    ```bash
+    curl https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+    ```
+  </Step>
+</Steps>
+
+### Scenario 2: Intermittent Connection Issues
+
+<Steps>
+  <Step title="Run dump on server">
+    ```bash
+    sudo ./paqet dump -p 9999
+    ```
+    Leave this running to monitor packet arrival.
+  </Step>
+
+  <Step title="Generate traffic from client">
+    Make several requests through the proxy and watch the dump output.
+  </Step>
+
+  <Step title="Look for patterns">
+    - Packets arriving consistently?
+    - Any gaps or timeouts?
+    - Packet loss indicators?
+  </Step>
+</Steps>
+
+### Scenario 3: Configuration Changes
+
+<Steps>
+  <Step title="Test with ping first">
+    After changing network configuration, always test with ping before full deployment:
+    ```bash
+    sudo ./paqet ping -c config.yaml
+    ```
+  </Step>
+
+  <Step title="Verify each change">
+    Test one configuration change at a time:
+    - Changed interface? Test with ping.
+    - Changed IP? Test with ping.
+    - Changed MAC? Test with ping.
+  </Step>
+
+  <Step title="Full connection test">
+    Only after ping succeeds, test with full client/server and application traffic.
+  </Step>
+</Steps>
+
+## Debug Mode
+
+Enable debug logging for detailed connection information:
+
+```yaml
+log:
+  level: "debug"  # Change from "info" to "debug"
+```
+
+Debug logs show:
+- Packet capture details
+- KCP handshake process
+- Connection state changes
+- Encryption/decryption operations
+- Detailed error messages
+
+<Warning>
+Debug mode generates **significant** log output. Only use it for troubleshooting, not production operation.
+</Warning>
+
+## Performance Testing
+
+Test throughput and latency:
+
+```bash
+# Test HTTP download speed through SOCKS5
+curl -o /dev/null https://speed.cloudflare.com/__down?bytes=100000000 \
+  --proxy socks5h://127.0.0.1:1080
+
+# Test with time measurement
+time curl https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+```
+
+<Info>
+For performance testing, consider using `iperf3` with port forwarding mode to measure raw throughput.
+</Info>

@@ -1,0 +1,224 @@
+---
+title: Architecture
+description: Understanding paqet's client-server architecture and component design
+---
+
+paqet uses a client-server architecture where the client acts as a local proxy and the server acts as a remote gateway, with raw packet transport in between.
+
+## Client-Server Model
+
+### Client
+
+The client component runs on your local machine and provides two modes of operation:
+
+**SOCKS5 Proxy Mode**
+```yaml
+socks5:
+  - listen: "127.0.0.1:1080"
+```
+
+Accepts SOCKS5 connections from applications (curl, browsers, etc.) and dynamically forwards them through the raw TCP packet tunnel to any destination.
+
+**Port Forwarding Mode**
+```yaml
+forward:
+  - listen: "127.0.0.1:8080"
+    target: "127.0.0.1:80"
+    protocol: "tcp"
+```
+
+Forwards traffic from a local port to a specific target address via the server.
+
+<Info>
+Both modes can be used simultaneously in the same client configuration.
+</Info>
+
+### Server
+
+The server component runs on a remote machine with a public IP address. It:
+
+1. Listens for raw TCP packets on the configured port
+2. Accepts KCP connections from clients
+3. Forwards decrypted traffic to target destinations
+4. Returns responses back through the encrypted tunnel
+
+```yaml
+listen:
+  addr: ":9999"
+network:
+  ipv4:
+    addr: "10.0.0.100:9999"
+```
+
+<Warning>
+Do not use standard ports (80, 443, etc.) for the server, as iptables rules can affect outgoing server connections. Choose high-numbered ports like 9999 or 8888.
+</Warning>
+
+## Component Breakdown
+
+paqet is built on several key open-source libraries, each providing specific functionality:
+
+### pcap (libpcap)
+
+**Purpose**: Low-level packet capture and injection
+
+- Captures raw packets directly from the network interface
+- Injects crafted packets onto the network
+- Bypasses the OS TCP/IP stack entirely
+
+**Used in**: Both client and server for sending and receiving raw packets
+
+<Note>
+Linux binaries are statically linked. macOS requires Xcode Command Line Tools. Windows requires Npcap.
+</Note>
+
+### gopacket
+
+**Purpose**: Packet crafting and decoding library for Go
+
+- Constructs Ethernet, IP, and TCP headers
+- Parses incoming packet headers
+- Calculates checksums
+- Provides packet serialization/deserialization
+
+**Used in**: Both client and server for packet manipulation
+
+### kcp-go
+
+**Purpose**: Reliable, encrypted transport protocol
+
+- Implements KCP (fast ARQ protocol) in Go
+- Provides symmetric encryption (AES, ChaCha20, etc.)
+- Handles packet retransmission and ordering
+- Optimized for high-loss networks with aggressive retransmission
+
+**Used in**: Both client and server as the transport layer
+
+The client creates connections in `internal/client/client.go:28-37`:
+```go
+for i := range c.cfg.Transport.Conn {
+    tc, err := newTimedConn(ctx, c.cfg)
+    if err != nil {
+        flog.Errorf("failed to create connection %d: %v", i+1, err)
+        return err
+    }
+    flog.Debugf("client connection %d created successfully", i+1)
+    c.iter.Items = append(c.iter.Items, tc)
+}
+```
+
+The server listens for KCP connections in `internal/server/server.go:49-54`:
+```go
+listener, err := kcp.Listen(s.cfg.Transport.KCP, pConn)
+if err != nil {
+    return fmt.Errorf("could not start KCP listener: %w", err)
+}
+defer listener.Close()
+flog.Infof("Server started - listening for packets on :%d", s.cfg.Listen.Addr.Port)
+```
+
+### smux
+
+**Purpose**: Stream multiplexing library
+
+- Multiplexes multiple streams over a single KCP connection
+- Reduces connection establishment overhead
+- Allows concurrent requests without creating new raw packet flows
+
+**Used in**: Both client and server for efficient connection management
+
+## Network Stack Bypass
+
+Understanding how paqet bypasses the network stack is crucial to its operation.
+
+### Normal Application Flow
+
+```
+┌─────────────────────────┐
+│   Normal Application    │  ← Data received here
+└───────────┬─────────────┘
+            ↑
+┌───────────┴─────────────┐
+│   OS TCP/IP Stack       │  ← Firewall (netfilter) runs here
+│  (Connection Tracking)  │
+└───────────┬─────────────┘
+            ↑
+┌───────────┴─────────────┐
+│   Network Driver        │
+└─────────────────────────┘
+```
+
+Packets travel up the stack where:
+1. Network driver receives the packet
+2. TCP/IP stack processes headers, manages connection state
+3. `netfilter` (backend for `ufw`/`firewalld`) applies firewall rules
+4. Application receives filtered data
+
+### paqet's Bypassed Flow
+
+```
+┌─────────────────────────┐
+│   paqet Application     │  ← Gets packet copy immediately
+└──────┬──────────────────┘
+       ↑         \
+  (pcap copy)     \  (Original packet continues)
+       ↑           ↓
+┌──────┴──────────┴──────┐
+│   OS TCP/IP Stack       │  ← Firewall drops original packet,
+│  (Connection Tracking)  │     but paqet already has its copy
+└───────────┬─────────────┘
+            ↑
+┌───────────┴─────────────┐
+│   Network Driver        │
+└─────────────────────────┘
+```
+
+Key differences:
+- **pcap provides a copy** of packets before the TCP/IP stack processes them
+- **paqet processes the copy** independently of the OS
+- **Firewall rules don't apply** because paqet's copy bypasses netfilter
+- **OS doesn't know about the connection** (no state tracking)
+
+<Warning>
+Because the OS has no knowledge of the connection, it can generate TCP RST packets that corrupt state in NAT devices. This is why iptables rules are **required** on the server.
+</Warning>
+
+## Connection Multiplexing
+
+Multiplexing allows paqet to handle multiple application streams efficiently:
+
+### Without Multiplexing
+
+```
+App Stream 1 → KCP Connection 1 → Raw Packets 1 → Server
+App Stream 2 → KCP Connection 2 → Raw Packets 2 → Server
+App Stream 3 → KCP Connection 3 → Raw Packets 3 → Server
+```
+
+Each application stream requires:
+- Separate KCP handshake
+- Separate packet crafting overhead
+- More resources on both client and server
+
+### With Multiplexing (smux)
+
+```
+App Stream 1 ─┐
+App Stream 2 ─┼→ SMUX → Single KCP Connection → Raw Packets → Server
+App Stream 3 ─┘
+```
+
+Multiple streams share:
+- One KCP connection (established once)
+- One set of raw packet flows
+- Lower latency for subsequent requests
+
+The client maintains a pool of connections configured via:
+```yaml
+transport:
+  conn: 2  # Number of KCP connections to maintain
+```
+
+<Info>
+Multiple connections can provide better throughput by allowing parallel transmission, but each connection adds overhead. Start with 1-2 connections and increase if needed.
+</Info>

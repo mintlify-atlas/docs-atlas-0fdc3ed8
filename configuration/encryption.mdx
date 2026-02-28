@@ -1,0 +1,193 @@
+---
+title: 'Encryption Configuration'
+description: 'Secure your paqet connection with encryption'
+---
+
+Encryption in paqet is configured as part of the KCP transport settings. Both client and server must use the same encryption algorithm and key.
+
+## Encryption Settings
+
+<ParamField path="transport.kcp.block" type="string" default="aes">
+  Encryption algorithm to use for securing the connection.
+</ParamField>
+
+<ParamField path="transport.kcp.key" type="string" required>
+  Encryption key used to encrypt/decrypt traffic. Must be identical on both client and server.
+</ParamField>
+
+## Supported Encryption Algorithms
+
+paqet supports the following encryption algorithms via the `block` parameter:
+
+<AccordionGroup>
+  <Accordion title="AES Variants (Recommended)">
+    - `aes`: AES encryption (default, recommended)
+    - `aes-128`: AES-128 bit encryption
+    - `aes-128-gcm`: AES-128-GCM authenticated encryption
+    - `aes-192`: AES-192 bit encryption
+    
+    AES is the industry standard and provides excellent security with good performance.
+  </Accordion>
+  
+  <Accordion title="Other Ciphers">
+    - `salsa20`: Salsa20 stream cipher (fast, good for embedded systems)
+    - `blowfish`: Blowfish block cipher
+    - `twofish`: Twofish block cipher
+    - `cast5`: CAST5 block cipher
+    - `3des`: Triple DES (legacy, not recommended)
+    - `tea`: Tiny Encryption Algorithm
+    - `xtea`: Extended TEA
+    - `sm4`: Chinese national standard cipher
+  </Accordion>
+  
+  <Accordion title="Weak or No Encryption">
+    - `xor`: Simple XOR cipher (weak, not recommended)
+    - `none`: No encryption
+    - `null`: No encryption
+    
+    <Warning>
+    Using `none`, `null`, or `xor` provides little or no security. Only use these for testing or in trusted networks.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Generating Encryption Keys
+
+Use the `paqet secret` command to generate a secure random key:
+
+```bash
+paqet secret
+```
+
+This will output a cryptographically secure random key that you can use in your configuration:
+
+```
+Generated secret key: 8x2Kp9mL3vQ7wN5R
+```
+
+<Note>
+The same key must be used in both the client and server configuration files for them to communicate.
+</Note>
+
+## Configuration Example
+
+### Using AES Encryption (Recommended)
+
+```yaml
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    block: "aes"  # Use AES encryption
+    key: "8x2Kp9mL3vQ7wN5R"  # Must match on client and server
+```
+
+### Using AES-GCM for Authenticated Encryption
+
+```yaml
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    block: "aes-128-gcm"  # Authenticated encryption
+    key: "8x2Kp9mL3vQ7wN5R"
+```
+
+### Using Salsa20 for Performance
+
+```yaml
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    block: "salsa20"  # Fast stream cipher
+    key: "8x2Kp9mL3vQ7wN5R"
+```
+
+### Testing Without Encryption (Not Recommended)
+
+<Warning>
+Disabling encryption exposes all traffic in plaintext. Only use this for testing or debugging.
+</Warning>
+
+```yaml
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    block: "none"  # No encryption
+    key: ""  # Key not required when encryption is disabled
+```
+
+## Key Requirements
+
+<ParamField path="Key Length" type="requirement">
+  The encryption key can be any string, but longer keys are more secure. A minimum of 16 characters is recommended.
+</ParamField>
+
+<ParamField path="Key Matching" type="requirement">
+  The encryption key must be **identical** on both client and server. Any mismatch will prevent connection establishment.
+</ParamField>
+
+<ParamField path="Key Security" type="requirement">
+  - Generate keys using `paqet secret` for cryptographic randomness
+  - Never commit keys to version control
+  - Rotate keys periodically for enhanced security
+  - Use different keys for different deployments
+</ParamField>
+
+## Security Recommendations
+
+<CardGroup cols={2}>
+  <Card title="Use Strong Encryption" icon="shield-check">
+    Always use `aes`, `aes-128-gcm`, or `salsa20` for production deployments.
+  </Card>
+  
+  <Card title="Generate Random Keys" icon="key">
+    Use `paqet secret` to generate cryptographically secure random keys.
+  </Card>
+  
+  <Card title="Protect Your Keys" icon="lock">
+    Store configuration files securely and restrict file permissions.
+  </Card>
+  
+  <Card title="Rotate Keys" icon="rotate">
+    Periodically change encryption keys for enhanced security.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection Fails with Encryption Enabled">
+    Verify that:
+    - The `block` parameter is identical on client and server
+    - The `key` parameter is identical on client and server
+    - There are no extra spaces or special characters in the key
+    - The encryption algorithm is supported (check spelling)
+  </Accordion>
+  
+  <Accordion title="Validation Error: 'KCP encryption key is required'">
+    You must provide a key when using any encryption algorithm except `none` or `null`:
+    
+    ```yaml
+    transport:
+      kcp:
+        block: "aes"
+        key: "your-secret-key-here"  # This is required
+    ```
+  </Accordion>
+  
+  <Accordion title="Performance Issues with Encryption">
+    If encryption is causing performance bottlenecks:
+    - Try `salsa20` for faster encryption with good security
+    - Use `aes` (hardware-accelerated on most modern CPUs)
+    - Avoid `3des` and `blowfish` (slower legacy algorithms)
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Transport Configuration](/configuration/transport)
+- [Client Configuration](/configuration/client)
+- [Server Configuration](/configuration/server)

@@ -1,0 +1,272 @@
+---
+title: Port Forwarding Mode
+description: Forward specific local ports to remote targets through the paqet tunnel
+---
+
+## Overview
+
+Port forwarding mode allows you to create specific local→remote port mappings that forward traffic through the paqet tunnel. This is useful when you need dedicated ports for specific services or when applications don't support SOCKS5 proxies.
+
+## How Port Forwarding Works
+
+Port forwarding creates a static mapping between a local port and a remote target:
+
+```
+[Application] → [localhost:8080] → [paqet Client] → [Raw Packets] → [paqet Server] → [target:80]
+```
+
+1. Your application connects to a local port (e.g., `127.0.0.1:8080`)
+2. paqet client receives the connection and forwards it through the tunnel
+3. paqet server receives the traffic and connects to the configured target
+4. All traffic flows bidirectionally through the encrypted tunnel
+
+## Configuration
+
+### Basic Port Forward
+
+Add the `forward` section to your client configuration:
+
+```yaml
+# Role must be explicitly set
+role: "client"
+
+# Port forwarding configuration
+forward:
+  - listen: "127.0.0.1:8080"   # Local port to listen on
+    target: "127.0.0.1:80"     # Target to forward to (via server)
+    protocol: "tcp"            # Protocol (tcp/udp)
+```
+
+This configuration:
+- Listens on local port `8080`
+- Forwards all connections to `127.0.0.1:80` **on the server side**
+- Uses TCP protocol
+
+<Note>
+The target address is resolved and connected to **from the server**, not from the client. This means `127.0.0.1:80` refers to the server's localhost, not the client's.
+</Note>
+
+### TCP Forwarding
+
+TCP is the default and most common protocol for port forwarding:
+
+```yaml
+forward:
+  - listen: "127.0.0.1:3306"   # Local MySQL port
+    target: "10.0.0.50:3306"   # Remote MySQL server
+    protocol: "tcp"
+```
+
+TCP forwarding is ideal for:
+- Database connections (MySQL, PostgreSQL, Redis)
+- SSH tunnels
+- HTTP/HTTPS services
+- Any connection-oriented protocol
+
+### UDP Forwarding
+
+UDP forwarding is also supported for connectionless protocols:
+
+```yaml
+forward:
+  - listen: "127.0.0.1:53"     # Local DNS port
+    target: "8.8.8.8:53"       # Google DNS
+    protocol: "udp"
+```
+
+UDP forwarding is useful for:
+- DNS queries
+- VoIP/SIP traffic
+- Gaming protocols
+- Video streaming
+- Any datagram-based protocol
+
+<Warning>
+UDP is connectionless, so there's no persistent connection state. Each UDP packet is forwarded independently through the tunnel.
+</Warning>
+
+### Multiple Forwards
+
+You can configure multiple port forwards simultaneously:
+
+```yaml
+forward:
+  # Forward local HTTP to remote web server
+  - listen: "127.0.0.1:8080"
+    target: "192.168.1.50:80"
+    protocol: "tcp"
+
+  # Forward local MySQL to remote database
+  - listen: "127.0.0.1:3306"
+    target: "10.0.0.100:3306"
+    protocol: "tcp"
+
+  # Forward local DNS to remote resolver
+  - listen: "127.0.0.1:5353"
+    target: "8.8.8.8:53"
+    protocol: "udp"
+```
+
+### Complete Client Configuration Example
+
+```yaml
+role: "client"
+
+log:
+  level: "info"
+
+forward:
+  - listen: "127.0.0.1:8080"
+    target: "127.0.0.1:80"
+    protocol: "tcp"
+
+network:
+  interface: "en0"
+  ipv4:
+    addr: "192.168.1.100:0"
+    router_mac: "aa:bb:cc:dd:ee:ff"
+
+server:
+  addr: "10.0.0.100:9999"
+
+transport:
+  protocol: "kcp"
+  kcp:
+    block: "aes"
+    key: "your-secret-key-here"
+```
+
+## Use Cases
+
+### Remote Service Access
+
+Access services running on or accessible from the server:
+
+```yaml
+forward:
+  # Access server's local web interface
+  - listen: "127.0.0.1:8080"
+    target: "127.0.0.1:80"
+    protocol: "tcp"
+```
+
+Then browse to `http://localhost:8080` to access the server's web interface.
+
+### Database Tunneling
+
+Securely access remote databases:
+
+```yaml
+forward:
+  - listen: "127.0.0.1:3306"
+    target: "db.internal.company.com:3306"
+    protocol: "tcp"
+```
+
+Connect your database client to `localhost:3306` and it will tunnel to the remote database.
+
+### Private Network Access
+
+Access services on the server's private network:
+
+```yaml
+forward:
+  - listen: "127.0.0.1:8080"
+    target: "192.168.1.100:80"   # Server's private network
+    protocol: "tcp"
+```
+
+### Development and Testing
+
+Forward local development ports to test against remote services:
+
+```yaml
+forward:
+  # Forward local app to remote API
+  - listen: "127.0.0.1:8000"
+    target: "api.example.com:443"
+    protocol: "tcp"
+```
+
+## Combining with SOCKS5
+
+You can run both port forwarding and SOCKS5 proxy mode simultaneously:
+
+```yaml
+# Dynamic proxy for general browsing
+socks5:
+  - listen: "127.0.0.1:1080"
+
+# Dedicated ports for specific services
+forward:
+  - listen: "127.0.0.1:3306"
+    target: "db.internal:3306"
+    protocol: "tcp"
+  - listen: "127.0.0.1:6379"
+    target: "redis.internal:6379"
+    protocol: "tcp"
+```
+
+This gives you:
+- SOCKS5 for flexible application-level proxying
+- Port forwards for services that need dedicated local ports
+
+## Port Forwarding vs SOCKS5
+
+| Feature | Port Forwarding | SOCKS5 |
+|---------|----------------|--------|
+| **Configuration** | Pre-configured targets | Dynamic targets |
+| **Flexibility** | One local port = one target | Any target per connection |
+| **Application Support** | Works with any application | Requires SOCKS5 support |
+| **Use Case** | Specific services | General-purpose proxy |
+| **Setup Complexity** | Simple | Requires app configuration |
+
+## Testing
+
+Verify your port forward is working:
+
+<Steps>
+  <Step title="Start paqet client and server">
+    Ensure both are running with your configuration.
+  </Step>
+
+  <Step title="Test the local port">
+    Test connectivity to your local forwarded port:
+    ```bash
+    # For HTTP services
+    curl http://localhost:8080
+
+    # For general TCP connectivity
+    nc -zv localhost 8080
+
+    # For database connections
+    mysql -h 127.0.0.1 -P 3306 -u user -p
+    ```
+  </Step>
+
+  <Step title="Check paqet logs">
+    Look for connection messages in the client logs:
+    ```
+    INFO starting tcp forwarder: 127.0.0.1:8080 -> 127.0.0.1:80
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+If connections fail:
+- Verify the target address is reachable **from the server**
+- Check server logs for connection errors
+- Ensure no firewall is blocking the target port on the server side
+- Verify the protocol (TCP/UDP) matches the target service
+</Warning>
+
+## Performance Considerations
+
+- **TCP**: Connection-oriented, reliable, built-in flow control
+- **UDP**: Lower overhead, better for real-time applications, no guaranteed delivery
+- **Multiple forwards**: Each forward runs independently with minimal overhead
+- **KCP transport**: Optimized for high-loss networks with aggressive retransmission
+
+<Info>
+For latency-sensitive applications (gaming, VoIP), consider tuning KCP mode to `fast` or `fast2` in your transport configuration.
+</Info>

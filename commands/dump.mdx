@@ -1,0 +1,106 @@
+---
+title: "dump"
+description: "Capture and display raw TCP packets for debugging"
+---
+
+The `dump` command is a packet capture tool that logs incoming TCP packets with their payloads, similar to tcpdump but specifically designed for paqet traffic.
+
+## Syntax
+
+```bash
+paqet dump [flags]
+```
+
+## Description
+
+The `dump` command captures and displays raw TCP packets arriving on the configured port. It shows packet details including source address, destination address, timestamp, payload length, and a hex dump of the payload data. This is invaluable for debugging connection issues, verifying packet delivery, and analyzing traffic patterns.
+
+<Note>
+  The `dump` command requires a server configuration file and will listen on the port specified in the server config.
+</Note>
+
+## Flags
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--config` | `-c` | `config.yaml` | Path to the server configuration file |
+
+## Usage Examples
+
+### Start packet capture
+
+```bash
+sudo paqet dump -c server-config.yaml
+```
+
+### Capture with custom config location
+
+```bash
+sudo paqet dump -c /etc/paqet/server.yaml
+```
+
+## Example Output
+
+```
+listening for packets on :1337, (Press Ctrl+C to exit)
+[14:32:15.234] Packet: 203.0.113.50:45678 -> 198.51.100.10:1337 | Length: 4 bytes
+--- PAYLOAD (HEX DUMP) ---
+00000000  50 49 4e 47                                       |PING|
+--------------------------
+[14:32:18.891] Packet: 203.0.113.50:45679 -> 198.51.100.10:1337 | Length: 128 bytes
+--- PAYLOAD (HEX DUMP) ---
+00000000  a7 3f 8c 2e 91 5d 43 b8  7f 1a 6d 94 3e 52 c0 8f  |.?...]C...m.>R..|
+00000010  2b 6e 18 d5 7c 4a 29 f3  a1 87 5b 3c 90 e6 4d 71  |+n..|J)...[<..Mq|
+...
+--------------------------
+```
+
+<Warning>
+  **Root privileges required**: The `dump` command requires sudo/root access to capture raw packets from the network interface.
+</Warning>
+
+## When to Use Dump
+
+Use the `dump` command for:
+
+- **Debugging connectivity**: Verify that packets are arriving at the server
+- **Testing client ping**: Monitor the server while running `paqet ping` from a client
+- **Analyzing traffic**: Inspect packet payloads to debug protocol issues
+- **Verifying encryption**: Check that payloads are properly encrypted (should look random)
+- **Network diagnostics**: Identify packet loss or routing problems
+
+## What You'll See
+
+Each captured packet displays:
+
+1. **Timestamp**: Time the packet was received (HH:MM:SS.mmm)
+2. **Source Address**: IP and port of the sender
+3. **Destination Address**: IP and port where packet was received
+4. **Length**: Size of the payload in bytes
+5. **Hex Dump**: Complete payload in hexadecimal and ASCII format
+
+<Info>
+  Encrypted paqet traffic will appear as random binary data in the hex dump. If you see readable text (other than test pings), encryption may not be working correctly.
+</Info>
+
+## Stopping the Capture
+
+Press `Ctrl+C` to stop capturing and exit gracefully:
+
+```
+^C
+Shutdown signal received, exiting.
+```
+
+## Comparison to tcpdump
+
+Unlike tcpdump, `paqet dump`:
+
+- Works specifically with paqet's raw socket layer
+- Respects your paqet configuration (interface, addresses)
+- Shows only the application payload, not full TCP headers
+- Formats output for easy debugging of paqet-specific issues
+
+<Note>
+  For full packet analysis including TCP/IP headers, use tcpdump or Wireshark. Use `paqet dump` when you want to quickly verify paqet-level packet delivery.
+</Note>

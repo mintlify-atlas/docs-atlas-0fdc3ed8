@@ -1,0 +1,95 @@
+---
+title: "ping"
+description: "Test connectivity by sending a raw TCP packet to the server"
+---
+
+The `ping` command sends a single raw TCP packet with a custom payload to test connectivity between client and server.
+
+## Syntax
+
+```bash
+paqet ping [flags]
+```
+
+## Description
+
+This command is used to verify that your paqet client can successfully send raw TCP packets to the server. It's useful for testing network configuration, firewall rules, and interface settings before running the full client.
+
+<Note>
+  The `ping` command requires a client configuration file. It uses the network interface and server address specified in your config.
+</Note>
+
+## Flags
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--config` | `-c` | `config.yaml` | Path to the client configuration file |
+| `--payload` | | `PING` | The string payload to send in the packet |
+
+## Usage Examples
+
+### Basic ping test
+
+```bash
+sudo paqet ping -c client-config.yaml
+```
+
+### Ping with custom payload
+
+```bash
+sudo paqet ping -c client-config.yaml --payload "TEST_PACKET"
+```
+
+## What Success Looks Like
+
+```
+Sending packet from IPv4:192.168.1.100 IPv6:fe80::1 to 203.0.113.10:1337 via eth0...
+Payload: "PING" (4 bytes)
+Packet sent successfully!
+```
+
+## What Failure Looks Like
+
+### Interface not found
+
+```
+Failed to create raw socket: interface eth0 not found
+```
+
+### Permission denied
+
+```
+Failed to create raw socket: operation not permitted
+```
+
+### Configuration error
+
+```
+Failed to load configuration: open config.yaml: no such file or directory
+```
+
+<Warning>
+  **Root privileges required**: Like the `run` command, `ping` requires sudo/root access to create and use raw sockets.
+</Warning>
+
+## When to Use Ping
+
+Use the `ping` command to:
+
+- **Test configuration**: Verify your client config is correct before starting the full client
+- **Debug connectivity**: Check if packets can reach the server through your network
+- **Verify interface**: Confirm the network interface specified in config exists and works
+- **Test firewall rules**: Ensure firewall isn't blocking raw TCP packets to the server
+
+<Info>
+  The ping command only sends a packet; it doesn't wait for a response. To verify the server received the packet, check the server logs or use the `dump` command on the server side.
+</Info>
+
+## Troubleshooting
+
+If ping fails:
+
+1. **Check interface name**: Run `paqet iface` to list available interfaces
+2. **Verify permissions**: Ensure you're running with sudo/root
+3. **Check config**: Verify the server address and port are correct
+4. **Test network**: Ensure basic network connectivity to the server exists

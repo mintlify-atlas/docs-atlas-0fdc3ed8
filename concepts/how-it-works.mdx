@@ -1,0 +1,129 @@
+---
+title: How It Works
+description: Understanding paqet's packet-level proxy architecture and transport mechanism
+---
+
+paqet is a bidirectional packet-level proxy that forwards traffic from a local client to a remote server, bypassing the host operating system's TCP/IP stack using raw packet capture and injection.
+
+## Packet Flow
+
+The overall architecture follows this flow:
+
+```
+[Your App] <------> [paqet Client] <===== Raw TCP Packet =====> [paqet Server] <------> [Target Server]
+(e.g. curl)        (localhost:1080)        (Internet)          (Public IP:PORT)     (e.g. https://httpbin.org)
+```
+
+1. **Your Application** connects to the paqet client via a local proxy (SOCKS5 or port forwarding)
+2. **paqet Client** captures and crafts raw TCP packets containing encrypted data
+3. **Raw TCP Packets** traverse the Internet, bypassing standard protocol handshakes
+4. **paqet Server** receives and decodes the packets using pcap
+5. **Target Server** receives the forwarded request as if it came directly from the server
+
+## Packet Capture with pcap
+
+paqet uses `pcap` (packet capture) to hook into the network stack at a low level. Unlike normal applications that rely on the operating system's TCP/IP stack, paqet requests a direct copy of packets from the network driver.
+
+<Info>
+The pcap library is the same technology used by tools like `tcpdump` and Wireshark to capture network traffic.
+</Info>
+
+This approach allows paqet to:
+- Receive packets before the OS TCP/IP stack processes them
+- Bypass kernel-level connection tracking (conntrack)
+- Avoid standard TCP handshake protocols that firewalls detect
+- Operate independently of OS firewall rules
+
+Both the client and server use pcap to:
+- **Capture** incoming raw TCP packets from the network interface
+- **Decode** packet headers using gopacket
+- **Extract** the encrypted payload data
+
+## Crafted TCP Packet Injection
+
+Instead of using the OS's TCP stack to send data, paqet crafts raw TCP packets manually and injects them directly onto the network interface.
+
+The packet crafting process:
+1. **Build Ethernet header** with source/destination MAC addresses
+2. **Build IP header** with source/destination IP addresses
+3. **Build TCP header** with configurable TCP flags (PSH-ACK, SYN, ACK, etc.)
+4. **Embed encrypted payload** containing the actual transport data
+5. **Calculate checksums** for IP and TCP headers
+6. **Inject packet** directly to the network interface via pcap
+
+<Note>
+The `network.tcp.local_flag` and `network.tcp.remote_flag` configuration arrays allow cycling through different TCP flag combinations to vary traffic patterns and evade detection.
+</Note>
+
+## KCP: Reliable Encrypted Transport
+
+Since paqet bypasses the OS TCP/IP stack, it cannot rely on TCP's built-in reliability and ordering guarantees. Instead, it uses **KCP** (a fast and reliable ARQ protocol) as its transport layer.
+
+### What KCP Provides
+
+- **Reliability**: Automatic retransmission of lost packets
+- **Ordering**: In-order delivery of data segments
+- **Flow Control**: Congestion avoidance and window management
+- **Encryption**: Symmetric encryption (AES, ChaCha20, etc.) for data confidentiality
+- **Low Latency**: Aggressive retransmission and forward error correction optimized for high-loss networks
+
+KCP runs on top of the raw packet transport, treating each captured/injected packet as a datagram delivery mechanism.
+
+```
+┌─────────────────────────────────┐
+│      Application Data           │
+├─────────────────────────────────┤
+│   SMUX (Connection Mux)         │  ← Multiple streams over one connection
+├─────────────────────────────────┤
+│   KCP (Encrypted + Reliable)    │  ← Handles reliability and encryption
+├─────────────────────────────────┤
+│   Raw TCP Packets (Crafted)     │  ← Injected via pcap
+├─────────────────────────────────┤
+│   Network Interface             │
+└─────────────────────────────────┘
+```
+
+### Encryption Modes
+
+The `transport.kcp.block` parameter determines the encryption method:
+
+- **`aes`** - AES encryption (secure, recommended)
+- **`chacha20`** - ChaCha20 encryption (secure, faster on some platforms)
+- **`3des`** - Triple DES encryption
+- **`tea`** - TEA encryption
+- **`xor`** - Simple XOR obfuscation (not secure)
+
+<Warning>
+The `none` and `null` modes disable authentication entirely. Anyone with your server IP and port can connect. Use only for testing.
+</Warning>
+
+### Connection Multiplexing with smux
+
+On top of KCP, paqet uses **smux** to multiplex multiple application streams over a single KCP connection. This allows:
+- Multiple simultaneous requests without creating new connections
+- Efficient resource usage
+- Lower latency for subsequent requests (connection already established)
+
+## Real Use Cases
+
+paqet is designed for specific scenarios where standard VPNs or proxies are insufficient:
+
+### Firewall Bypass
+
+Bypassing firewalls that detect and block standard handshake protocols (TLS ClientHello, SSH handshakes, etc.) or use kernel-level connection tracking.
+
+<Info>
+Because paqet operates below the netfilter layer, standard firewall rules like `ufw deny <PORT>` have no effect on its operation.
+</Info>
+
+### Network Security Research
+
+Testing network filtering mechanisms, understanding packet-level traffic manipulation, and researching low-level transport protocols.
+
+### High-Loss Networks
+
+KCP's aggressive retransmission and forward error correction make it suitable for networks with high packet loss rates.
+
+<Note>
+While more complex to configure than general-purpose VPN solutions, paqet offers granular control at the packet level for specialized use cases.
+</Note>

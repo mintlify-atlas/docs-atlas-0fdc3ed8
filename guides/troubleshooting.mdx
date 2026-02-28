@@ -1,0 +1,531 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for paqet connectivity problems
+---
+
+## Overview
+
+This guide covers common issues when running paqet and how to resolve them. Most problems fall into a few categories: permissions, network configuration, firewall rules, or encryption mismatches.
+
+## Quick Diagnostics
+
+Before diving into specific issues, run these basic checks:
+
+<Steps>
+  <Step title="Test with ping">
+    ```bash
+    sudo ./paqet ping -c config.yaml
+    ```
+    If ping fails, the issue is with basic connectivity or configuration.
+  </Step>
+
+  <Step title="Check debug logs">
+    Enable debug logging in your config:
+    ```yaml
+    log:
+      level: "debug"
+    ```
+    Restart paqet and look for error messages.
+  </Step>
+
+  <Step title="Verify both sides">
+    Ensure both client and server are running and show "started successfully" messages.
+  </Step>
+</Steps>
+
+## Common Issues
+
+<Accordion title="Permission Denied">
+  ### Problem
+
+  ```
+  Error: permission denied
+  Error: pcap: You don't have permission to capture on that device
+  ```
+
+  ### Cause
+
+  paqet requires root privileges to use raw sockets for packet capture and injection.
+
+  ### Solution
+
+  Always run paqet with `sudo`:
+
+  ```bash
+  # Correct
+  sudo ./paqet run -c config.yaml
+  sudo ./paqet ping -c config.yaml
+  sudo ./paqet dump -p 9999
+
+  # Incorrect
+  ./paqet run -c config.yaml  # Will fail
+  ```
+
+  <Warning>
+  On Linux, even if you're the root user, you must explicitly use `sudo` or run as root. File permissions alone are not sufficient.
+  </Warning>
+
+  ### Platform-Specific Notes
+
+  **Linux**: No additional setup needed, just use `sudo`.
+
+  **macOS**: May prompt for administrator password. Ensure you have admin rights.
+
+  **Windows**: Run PowerShell or Command Prompt as Administrator.
+</Accordion>
+
+<Accordion title="Connection Timeouts">
+  ### Problem
+
+  ```
+  Error: connection timeout
+  Error: no route to host
+  Packets not reaching server
+  ```
+
+  Connection times out and never establishes. This is the most common issue.
+
+  ### Possible Causes and Solutions
+
+  <Steps>
+    <Step title="Check iptables rules on server">
+      The server **must** have iptables rules configured to prevent kernel interference.
+
+      Verify rules exist:
+      ```bash
+      sudo iptables -t raw -L -n | grep <PORT>
+      sudo iptables -t mangle -L -n | grep <PORT>
+      ```
+
+      If missing, add them:
+      ```bash
+      # Replace <PORT> with your server port (e.g., 9999)
+      sudo iptables -t raw -A PREROUTING -p tcp --dport <PORT> -j NOTRACK
+      sudo iptables -t raw -A OUTPUT -p tcp --sport <PORT> -j NOTRACK
+      sudo iptables -t mangle -A OUTPUT -p tcp --sport <PORT> --tcp-flags RST RST -j DROP
+      ```
+
+      <Warning>
+      **Critical**: iptables rules are essential. Without them, the kernel will send RST packets that break connections.
+      </Warning>
+    </Step>
+
+    <Step title="Verify network configuration">
+      Double-check all network details:
+
+      **Client config:**
+      ```yaml
+      network:
+        interface: "en0"              # Correct interface?
+        ipv4:
+          addr: "192.168.1.100:0"     # Your actual local IP?
+          router_mac: "aa:bb:cc:dd:ee:ff"  # Your actual gateway MAC?
+      server:
+        addr: "10.0.0.100:9999"       # Correct server IP and port?
+      ```
+
+      **Server config:**
+      ```yaml
+      listen:
+        addr: ":9999"                 # Port matches network.ipv4.addr?
+      network:
+        interface: "eth0"             # Correct interface?
+        ipv4:
+          addr: "10.0.0.100:9999"     # Server's actual IP? Port matches listen.addr?
+          router_mac: "aa:bb:cc:dd:ee:ff"  # Server's gateway MAC?
+      ```
+
+      <Info>
+      Use `ip a` (Linux) or `ifconfig` (macOS) to verify your IP address and interface name.
+      Use `arp -n <gateway_ip>` to get the gateway MAC address.
+      </Info>
+    </Step>
+
+    <Step title="Check cloud provider firewalls">
+      If your server is in the cloud (AWS, GCP, Azure, etc.), the cloud firewall must allow traffic.
+
+      **AWS Security Groups:**
+      - Add inbound rule: TCP, port 9999 (or your port), source 0.0.0.0/0
+
+      **GCP Firewall Rules:**
+      - Create rule allowing TCP ingress on your port
+
+      **Azure Network Security Groups:**
+      - Add inbound security rule for your port
+
+      <Warning>
+      Cloud firewalls are **separate** from iptables. Both must be configured correctly.
+      </Warning>
+    </Step>
+
+    <Step title="Verify NAT and port configuration">
+      **Server**: The port in `listen.addr` **must** match the port in `network.ipv4.addr`:
+      ```yaml
+      listen:
+        addr: ":9999"               # Port 9999
+      network:
+        ipv4:
+          addr: "10.0.0.100:9999"   # Port 9999 (must match)
+      ```
+
+      **Client**: Use port `0` in `network.ipv4.addr` for automatic assignment:
+      ```yaml
+      network:
+        ipv4:
+          addr: "192.168.1.100:0"   # Port 0 = random
+      ```
+
+      This prevents conflicts with other applications.
+    </Step>
+  </Steps>
+
+  ### Testing Connection Timeouts
+
+  ```bash
+  # 1. Run dump on server to see if packets arrive
+  sudo ./paqet dump -p 9999
+
+  # 2. Run ping from client
+  sudo ./paqet ping -c config.yaml
+
+  # 3. Check dump output
+  # - Packets arriving? Configuration is mostly correct.
+  # - No packets? Network config issue (IP, MAC, interface).
+  ```
+</Accordion>
+
+<Accordion title="Key Mismatch / Encryption Errors">
+  ### Problem
+
+  ```
+  Error: authentication failed
+  Error: decryption failed
+  Connection establishes but no data flows
+  ```
+
+  ### Cause
+
+  The KCP encryption key doesn't match between client and server.
+
+  ### Solution
+
+  Ensure the key is **exactly identical** on both sides:
+
+  **Client config:**
+  ```yaml
+  transport:
+    kcp:
+      key: "your-secret-key-here"
+  ```
+
+  **Server config:**
+  ```yaml
+  transport:
+    kcp:
+      key: "your-secret-key-here"  # Must be EXACTLY the same
+  ```
+
+  ### Common Mistakes
+
+  - Extra whitespace before or after the key
+  - Different quotes (single vs double)
+  - Trailing newline in the key
+  - Copy/paste errors
+
+  <Info>
+  Generate a secure key using:
+  ```bash
+  ./paqet secret
+  ```
+  Then copy the **exact** output to both configs.
+  </Info>
+
+  ### Encryption Mode Mismatch
+
+  The `block` parameter must also match:
+
+  ```yaml
+  transport:
+    kcp:
+      block: "aes"  # Must match on both sides
+      key: "your-secret-key-here"
+  ```
+
+  <Warning>
+  Using `block: "none"` or `block: "null"` disables authentication. Anyone with your server IP and port can connect.
+  </Warning>
+</Accordion>
+
+<Accordion title="Wrong Network Interface">
+  ### Problem
+
+  ```
+  Error: no such device
+  Error: interface not found
+  ```
+
+  ### Cause
+
+  The configured network interface doesn't exist or isn't active.
+
+  ### Solution
+
+  **Linux**: Find your interface with `ip a`:
+  ```bash
+  ip a
+  # Look for: eth0, ens3, ens5, wlan0, etc.
+  ```
+
+  **macOS**: Find your interface with `ifconfig`:
+  ```bash
+  ifconfig
+  # Look for: en0, en1, etc.
+  ```
+
+  **Windows**: Use the Npcap device GUID:
+  ```powershell
+  Get-NetAdapter | Select-Object Name, InterfaceGuid
+  ```
+
+  Update your config:
+  ```yaml
+  network:
+    interface: "eth0"  # Change to your actual interface
+    # Windows:
+    # guid: "\Device\NPF_{YOUR-GUID-HERE}"
+  ```
+
+  <Info>
+  The interface must be **active** (status UP). Check with `ip link show` (Linux) or `ifconfig` (macOS).
+  </Info>
+</Accordion>
+
+<Accordion title="Wrong MAC Address">
+  ### Problem
+
+  ```
+  Packets not reaching destination
+  Connection timeout
+  No response from server
+  ```
+
+  ### Cause
+
+  The configured `router_mac` is incorrect, so packets are sent to the wrong device.
+
+  ### Solution
+
+  **Find your gateway MAC address:**
+
+  **Linux**:
+  ```bash
+  # 1. Find gateway IP
+  ip r | grep default
+  # Output: default via 192.168.1.1 dev eth0
+
+  # 2. Find gateway MAC
+  arp -n 192.168.1.1
+  # Output: 192.168.1.1 ... aa:bb:cc:dd:ee:ff
+  ```
+
+  **macOS**:
+  ```bash
+  # 1. Find gateway IP
+  netstat -rn | grep default
+  # Output: default 192.168.1.1 UGSc en0
+
+  # 2. Find gateway MAC
+  arp -n 192.168.1.1
+  ```
+
+  **Update your config:**
+  ```yaml
+  network:
+    ipv4:
+      router_mac: "aa:bb:cc:dd:ee:ff"  # Use actual MAC from arp command
+  ```
+
+  <Warning>
+  The MAC address format must use colons (`:`) not hyphens (`-`).
+  Correct: `aa:bb:cc:dd:ee:ff`
+  Wrong: `aa-bb-cc-dd-ee-ff`
+  </Warning>
+</Accordion>
+
+<Accordion title="Standard Port Conflicts">
+  ### Problem
+
+  ```
+  Server cannot make outbound connections
+  Outbound traffic blocked
+  ```
+
+  ### Cause
+
+  You're using standard ports (80, 443, 22, etc.) which conflict with iptables rules.
+
+  ### Solution
+
+  **Use non-standard ports** for paqet:
+
+  ```yaml
+  # Good choices:
+  listen:
+    addr: ":9999"   # Non-standard high port
+
+  # Bad choices:
+  # addr: ":80"    # HTTP - conflicts with web servers
+  # addr: ":443"   # HTTPS - conflicts with TLS
+  # addr: ":22"    # SSH - conflicts with SSH server
+  ```
+
+  Recommended ports: 8888, 9999, 10000-65535
+
+  <Info>
+  The iptables rules configured for paqet can affect **outbound** connections from the server if you use standard ports. This is why non-standard ports are required.
+  </Info>
+</Accordion>
+
+<Accordion title="Client Behind NAT">
+  ### Problem
+
+  ```
+  Connection works intermittently
+  Port conflicts
+  ```
+
+  ### Cause
+
+  Using a fixed port on the client can cause conflicts with NAT or other applications.
+
+  ### Solution
+
+  Use port `0` in the client's `network.ipv4.addr` for automatic port assignment:
+
+  ```yaml
+  network:
+    ipv4:
+      addr: "192.168.1.100:0"  # Port 0 = random available port
+  ```
+
+  This tells paqet to automatically select an available port, avoiding conflicts.
+
+  <Note>
+  The server **must** use a fixed port. Only the client should use port 0.
+  </Note>
+</Accordion>
+
+<Accordion title="Windows Npcap Issues">
+  ### Problem
+
+  ```
+  Error: device not found (Windows)
+  Error: no Npcap devices
+  ```
+
+  ### Cause
+
+  Npcap isn't installed or the device GUID is incorrect.
+
+  ### Solution
+
+  <Steps>
+    <Step title="Install Npcap">
+      Download and install from [npcap.com](https://npcap.com/)
+
+      During installation:
+      - Enable "WinPcap compatibility mode"
+      - Enable "Install Npcap in WinPcap API-compatible mode"
+    </Step>
+
+    <Step title="Find device GUID">
+      In PowerShell:
+      ```powershell
+      Get-NetAdapter | Select-Object Name, InterfaceGuid
+      ```
+    </Step>
+
+    <Step title="Update config with GUID">
+      ```yaml
+      network:
+        guid: "\Device\NPF_{YOUR-INTERFACE-GUID}"
+        # Don't set 'interface' on Windows, use 'guid' instead
+      ```
+    </Step>
+  </Steps>
+
+  <Warning>
+  The GUID format must start with `\Device\NPF_{` and end with `}`.
+  </Warning>
+</Accordion>
+
+## Debug Commands
+
+Use these commands to gather diagnostic information:
+
+### Test Basic Connectivity
+
+```bash
+# Send test packet to server
+sudo ./paqet ping -c config.yaml
+```
+
+### Monitor Packet Arrival
+
+```bash
+# On server: watch for incoming packets
+sudo ./paqet dump -p 9999
+
+# On client: generate traffic
+sudo ./paqet ping -c config.yaml
+```
+
+### Check Configuration
+
+```bash
+# Verify network interface
+ip a               # Linux
+ifconfig           # macOS
+ipconfig /all      # Windows
+
+# Verify gateway MAC
+ip r | grep default                    # Linux: get gateway IP
+arp -n <gateway_ip>                    # Get MAC address
+
+# Verify firewall rules (server)
+sudo iptables -t raw -L -n
+sudo iptables -t mangle -L -n
+```
+
+### Enable Debug Logging
+
+```yaml
+log:
+  level: "debug"  # Shows detailed connection information
+```
+
+<Warning>
+Debug logs are **verbose**. Use only for troubleshooting, not production.
+</Warning>
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Collect information:**
+   - Client and server logs (with debug enabled)
+   - Output of `paqet ping`
+   - Output of `paqet dump`
+   - Your configuration files (remove sensitive keys)
+
+2. **Check documentation:**
+   - Review the [Configuration Reference](/configuration/client)
+   - See [Testing Connectivity](/guides/testing)
+
+3. **Report issues:**
+   - Open an issue on [GitHub](https://github.com/hanselime/paqet)
+   - Include OS, paqet version, and error messages
+
+<Info>
+Before reporting issues, always test with `paqet ping` first. This helps isolate whether the problem is with basic connectivity or application-level functionality.
+</Info>

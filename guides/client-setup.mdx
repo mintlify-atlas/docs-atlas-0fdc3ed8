@@ -1,0 +1,254 @@
+---
+title: Client Setup
+description: Step-by-step guide to configure and run the paqet client
+---
+
+The paqet client acts as a SOCKS5 proxy server on your local machine, accepting connections from applications and forwarding them through raw TCP packets to the paqet server.
+
+<Steps>
+  <Step title="Find Your Network Details">
+    Before configuring the client, you need to gather network information for your local machine.
+
+    <Tabs>
+      <Tab title="Linux">
+        **Find Interface and Local IP:**
+        ```bash
+        ip a
+        ```
+        Look for your primary network card (e.g., `eth0`, `ens3`). The IP address is listed under `inet`.
+
+        **Find Gateway MAC Address:**
+        ```bash
+        # First, find your gateway's IP
+        ip r | grep default
+        
+        # Then, find its MAC address (replace with your gateway IP)
+        arp -n 192.168.1.1
+        ```
+      </Tab>
+
+      <Tab title="macOS">
+        **Find Interface and Local IP:**
+        ```bash
+        ifconfig
+        ```
+        Look for your primary interface (e.g., `en0`). The IP is listed under `inet`.
+
+        **Find Gateway MAC Address:**
+        ```bash
+        # First, find your gateway's IP
+        netstat -rn | grep default
+        
+        # Then, find its MAC address (replace with your gateway IP)
+        arp -n 192.168.1.1
+        ```
+      </Tab>
+
+      <Tab title="Windows">
+        **Find Interface and Local IP:**
+        ```powershell
+        ipconfig /all
+        ```
+        Note your active network adapter's IP Address and Gateway IP Address.
+
+        **Find Interface GUID:**
+        
+        Windows requires the Npcap device GUID. Run in PowerShell:
+        ```powershell
+        Get-NetAdapter | Select-Object Name, InterfaceGuid
+        ```
+        Note the **Name** and **InterfaceGuid** of your active network interface. Format the GUID as:
+        ```
+        \Device\NPF_{YOUR-GUID-HERE}
+        ```
+
+        **Find Gateway MAC Address:**
+        ```powershell
+        arp -a 192.168.1.1
+        ```
+        Replace with your gateway IP address.
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create Client Configuration File">
+    Create a file named `config.yaml` in the same directory as your paqet binary:
+
+    ```yaml config.yaml
+    # Role must be explicitly set
+    role: "client"
+
+    # Logging configuration
+    log:
+      level: "info" # none, debug, info, warn, error, fatal
+
+    # SOCKS5 proxy configuration (client mode)
+    socks5:
+      - listen: "127.0.0.1:1080" # SOCKS5 proxy listen address
+
+    # Port forwarding configuration (can be used alongside SOCKS5)
+    # forward:
+    #   - listen: "127.0.0.1:8080"  # Local port to listen on
+    #     target: "127.0.0.1:80"    # Target to forward to (via server)
+    #     protocol: "tcp"           # Protocol (tcp/udp)
+
+    # Network interface settings
+    network:
+      interface: "en0" # CHANGE ME: Network interface (en0, eth0, wlan0, etc.)
+      # guid: "\\Device\\NPF_{...}" # Windows only (Npcap).
+      ipv4:
+        addr: "192.168.1.100:0" # CHANGE ME: Local IP (use port 0 for random port)
+        router_mac: "aa:bb:cc:dd:ee:ff" # CHANGE ME: Gateway/router MAC address
+
+    # Server connection settings
+    server:
+      addr: "10.0.0.100:9999" # CHANGE ME: paqet server address and port
+
+    # Transport protocol configuration
+    transport:
+      protocol: "kcp" # Transport protocol (currently only "kcp" supported)
+      kcp:
+        block: "aes" # Encryption algorithm
+        key: "your-secret-key-here" # CHANGE ME: Secret key (must match server)
+    ```
+
+    <Note>
+      See the [complete client configuration reference](/configuration/client) for all available options.
+    </Note>
+  </Step>
+
+  <Step title="Configure Network Interface">
+    Update the `network` section with your network details from Step 1:
+
+    **For Linux/macOS:**
+    ```yaml
+    network:
+      interface: "en0" # Your network interface name
+      ipv4:
+        addr: "192.168.1.100:0" # Your local IP with port 0
+        router_mac: "aa:bb:cc:dd:ee:ff" # Your gateway MAC address
+    ```
+
+    **For Windows:**
+    ```yaml
+    network:
+      interface: "Ethernet" # Your adapter name
+      guid: "\\Device\\NPF_{12345678-1234-1234-1234-123456789ABC}"
+      ipv4:
+        addr: "192.168.1.100:0" # Your local IP with port 0
+        router_mac: "aa:bb:cc:dd:ee:ff" # Your gateway MAC address
+    ```
+
+    <Warning>
+      Always use port `0` in the client's `network.ipv4.addr` setting. This enables automatic port assignment and prevents port conflicts.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Server Address">
+    Set the `server.addr` to your paqet server's public IP address and port:
+
+    ```yaml
+    server:
+      addr: "10.0.0.100:9999" # Your server's IP and port
+    ```
+
+    Make sure this matches the port configured in your server's `listen.addr` setting.
+  </Step>
+
+  <Step title="Set Encryption Key">
+    Configure the encryption key that matches your server:
+
+    ```yaml
+    transport:
+      kcp:
+        block: "aes"
+        key: "your-secret-key-here" # Must match server exactly
+    ```
+
+    <Note>
+      Generate a secure key using: `./paqet secret`
+    </Note>
+  </Step>
+
+  <Step title="Run the Client">
+    Make the binary executable and run with root privileges:
+
+    <Tabs>
+      <Tab title="Linux">
+        ```bash
+        # Make executable
+        chmod +x ./paqet_linux_amd64
+        
+        # Run the client
+        sudo ./paqet_linux_amd64 run -c config.yaml
+        ```
+      </Tab>
+
+      <Tab title="macOS">
+        ```bash
+        # Make executable
+        chmod +x ./paqet_darwin_arm64
+        
+        # Run the client
+        sudo ./paqet_darwin_arm64 run -c config.yaml
+        ```
+      </Tab>
+
+      <Tab title="Windows">
+        ```powershell
+        # Run as Administrator in PowerShell
+        .\paqet_windows_amd64.exe run -c config.yaml
+        ```
+      </Tab>
+    </Tabs>
+
+    <Warning>
+      Root/Administrator privileges are required to use raw sockets.
+    </Warning>
+  </Step>
+
+  <Step title="Test the Connection">
+    Once the client is running, test the SOCKS5 proxy:
+
+    ```bash
+    curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+    ```
+
+    If successful, you should see your server's public IP address in the response, confirming that traffic is being proxied through the paqet server.
+  </Step>
+</Steps>
+
+## Example Configuration
+
+Here's a complete working example for a macOS client:
+
+```yaml
+role: "client"
+
+log:
+  level: "info"
+
+socks5:
+  - listen: "127.0.0.1:1080"
+
+network:
+  interface: "en0"
+  ipv4:
+    addr: "192.168.1.100:0"
+    router_mac: "a0:b1:c2:d3:e4:f5"
+
+server:
+  addr: "203.0.113.50:9999"
+
+transport:
+  protocol: "kcp"
+  kcp:
+    block: "aes"
+    key: "my-secret-encryption-key"
+```
+
+## Next Steps
+
+- [Configure the server](/guides/server-setup)
+- [Learn about network configuration](/guides/network-configuration)
+- [Set up firewall rules](/guides/firewall-configuration)

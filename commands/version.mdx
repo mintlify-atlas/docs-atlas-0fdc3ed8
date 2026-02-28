@@ -1,0 +1,84 @@
+---
+title: "version"
+description: "Display paqet version and build information"
+---
+
+The `version` command prints detailed version and build information about your paqet installation.
+
+## Syntax
+
+```bash
+paqet version
+```
+
+## Description
+
+This command displays comprehensive version information including the release version, git commit hash, build timestamp, Go version used for compilation, and the target platform. This information is useful for bug reports, verifying installations, and ensuring compatibility.
+
+## Usage Example
+
+```bash
+paqet version
+```
+
+## Example Output
+
+```
+Version:    v1.0.0-alpha.19
+Git Tag:    v1.0.0-alpha.19
+Git Commit: a3f8c2e
+Build Time: 2024-03-15T10:30:45Z
+Go Version: go1.22.1
+Platform:   linux/amd64
+```
+
+## Information Displayed
+
+| Field | Description |
+|-------|-------------|
+| **Version** | The semantic version number of paqet |
+| **Git Tag** | The git tag used for this build |
+| **Git Commit** | Short hash of the git commit this build was made from |
+| **Build Time** | Timestamp when this binary was compiled |
+| **Go Version** | Version of Go used to build the binary |
+| **Platform** | Operating system and architecture (OS/ARCH) |
+
+## When to Use Version
+
+Run `paqet version` to:
+
+- **Verify installation**: Confirm paqet is correctly installed and accessible
+- **Check for updates**: Compare your version with the latest release
+- **Report bugs**: Include version info when filing issues on GitHub
+- **Audit deployments**: Document which version is running in production
+- **Debug compatibility**: Verify client and server versions match
+
+<Note>
+  When reporting bugs or asking for help, always include the output of `paqet version` to help maintainers diagnose issues.
+</Note>
+
+## Platform Identifiers
+
+Common platform values:
+
+- `linux/amd64`: 64-bit Linux (most servers)
+- `linux/arm64`: 64-bit ARM Linux (Raspberry Pi 4, AWS Graviton)
+- `darwin/amd64`: Intel Mac
+- `darwin/arm64`: Apple Silicon Mac
+- `windows/amd64`: 64-bit Windows
+
+<Info>
+  The platform information helps ensure you're running the correct binary for your system architecture. Using the wrong binary will result in "exec format error" or similar messages.
+</Info>
+
+## Version Compatibility
+
+For best results:
+
+- Use the same version of paqet on both client and server
+- Update both sides simultaneously when upgrading
+- Check release notes for breaking changes between versions
+
+<Warning>
+  Running different versions of paqet on client and server may cause protocol incompatibilities, especially across major version boundaries.
+</Warning>

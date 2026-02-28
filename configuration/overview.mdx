@@ -1,0 +1,118 @@
+---
+title: 'Configuration Overview'
+description: 'Learn how to configure paqet using YAML files'
+---
+
+paqet uses a unified YAML configuration approach that supports both client and server modes through a single configuration structure.
+
+## Configuration File Structure
+
+All paqet configuration is defined in YAML format with the following top-level structure:
+
+```yaml
+role: "client"  # or "server"
+log:
+  level: "info"
+network:
+  # Network interface settings
+transport:
+  # Transport protocol configuration
+```
+
+## Role Field Requirement
+
+<Warning>
+The `role` field is **required** in all configuration files and must be explicitly set to either `"client"` or `"server"`.
+</Warning>
+
+The role determines which configuration sections are active:
+
+- **Client mode**: Requires `socks5` or `forward` sections, plus `server` connection details
+- **Server mode**: Requires `listen` section for incoming connections
+
+Both modes require `network` and `transport` configuration.
+
+## Specifying Configuration
+
+Use the `-c` flag to specify your configuration file when starting paqet:
+
+```bash
+# Start client
+paqet -c client.yaml
+
+# Start server
+paqet -c server.yaml
+```
+
+## Configuration Sections
+
+The configuration file is organized into several sections:
+
+<CardGroup cols={2}>
+  <Card title="Logging" icon="file-lines">
+    Control log output levels (none, debug, info, warn, error, fatal)
+  </Card>
+  
+  <Card title="Network" icon="network-wired">
+    Network interface, IPv4/IPv6 addresses, MAC addresses, TCP flags, and PCAP settings
+  </Card>
+  
+  <Card title="Transport" icon="shuffle">
+    Protocol selection, connection pooling, buffer sizes, and KCP configuration
+  </Card>
+  
+  <Card title="Encryption" icon="lock">
+    Encryption algorithms and keys for secure communication
+  </Card>
+</CardGroup>
+
+### Client-Specific Sections
+
+- **socks5**: SOCKS5 proxy server configuration
+- **forward**: Port forwarding rules
+- **server**: Connection details for the paqet server
+
+### Server-Specific Sections
+
+- **listen**: Server listening address and port
+
+## Configuration Examples
+
+Complete configuration examples are provided:
+
+- [Client Configuration Reference](/configuration/client)
+- [Server Configuration Reference](/configuration/server)
+
+## Configuration Validation
+
+paqet validates all configuration on startup and will report detailed error messages if any issues are found:
+
+```bash
+validation failed:
+  - network interface is required
+  - KCP encryption key is required
+```
+
+<Note>
+Many configuration parameters have sensible defaults and can be omitted. See the client and server reference pages for default values.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Configuration" icon="laptop" href="/configuration/client">
+    Configure paqet client with SOCKS5 and forwarding
+  </Card>
+  
+  <Card title="Server Configuration" icon="server" href="/configuration/server">
+    Set up paqet server for incoming connections
+  </Card>
+  
+  <Card title="Transport Settings" icon="gauge-high" href="/configuration/transport">
+    Optimize KCP protocol for your network
+  </Card>
+  
+  <Card title="Encryption" icon="shield-halved" href="/configuration/encryption">
+    Secure your connection with encryption
+  </Card>
+</CardGroup>
